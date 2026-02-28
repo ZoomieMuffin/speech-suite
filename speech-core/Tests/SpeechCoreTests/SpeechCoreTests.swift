@@ -33,6 +33,24 @@ import Testing
     }
 }
 
+@Test func segmentInfiniteTimeThrows() {
+    #expect(throws: SpeechCoreError.invalidTimeRange) {
+        try TranscriptionSegment(text: "Bad", startTime: .infinity, endTime: .infinity)
+    }
+    #expect(throws: SpeechCoreError.invalidTimeRange) {
+        try TranscriptionSegment(text: "Bad", startTime: .nan, endTime: 1.0)
+    }
+}
+
+@Test func segmentConfidenceOutOfRangeThrows() {
+    #expect(throws: SpeechCoreError.self) {
+        try TranscriptionSegment(text: "Bad", startTime: 0, endTime: 1, confidence: 1.5)
+    }
+    #expect(throws: SpeechCoreError.self) {
+        try TranscriptionSegment(text: "Bad", startTime: 0, endTime: 1, confidence: -0.1)
+    }
+}
+
 // MARK: - SpeechCoreError
 
 @Test func errorIsEquatable() {

@@ -15,8 +15,16 @@ public struct TranscriptionSegment: Sendable {
         endTime: TimeInterval,
         confidence: Float? = nil
     ) throws(SpeechCoreError) {
+        guard startTime.isFinite, endTime.isFinite else {
+            throw SpeechCoreError.invalidTimeRange
+        }
         guard endTime >= startTime else {
             throw SpeechCoreError.invalidTimeRange
+        }
+        if let c = confidence {
+            guard (0.0...1.0).contains(c) else {
+                throw SpeechCoreError.invalidConfiguration("confidence must be in 0...1")
+            }
         }
         self.text = text
         self.startTime = startTime
