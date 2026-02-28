@@ -23,14 +23,21 @@ async def get_pr_diff(repo_name: str, pr_number: int, github_token: str):
         diff += f"**Files Changed:** {pr.changed_files} ({changed})\n\n---\n\n"
 
         max_patch_chars = 5000
+        max_total_chars = 50000
+        total_chars = len(diff)
         for file in pr.get_files():
+            if total_chars >= max_total_chars:
+                diff += "\n... (remaining files omitted: total diff too large)"
+                break
             diff += f"\n## {file.filename} ({file.status})\n"
             diff += f"+{file.additions} / -{file.deletions}\n\n"
             if file.patch:
                 patch = file.patch
-                if len(patch) > max_patch_chars:
-                    patch = patch[:max_patch_chars] + "\n... (truncated)"
+                remaining = max_total_chars - total_chars
+                if len(patch) > min(max_patch_chars, remaining):
+                    patch = patch[:min(max_patch_chars, remaining)] + "\n... (truncated)"
                 diff += f"```diff\n{patch}\n```\n\n"
+            total_chars = len(diff)
 
         return diff, pr
     except Exception as e:
@@ -52,7 +59,7 @@ async def analyze_with_copilot(diff: str, github_token: str) -> str:
             "model": "gpt-5.3-codex",
             "reasoning_effort": "xhigh",
             "streaming": True,
-            "on_permission_request": PermissionHandler.approve_all,
+            "on_permission_request": PermissionHandler.deny_all,
         })
 
         prompt = f"""以下のPull Requestをレビューしてください。
