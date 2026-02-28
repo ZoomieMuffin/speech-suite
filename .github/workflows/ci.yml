@@ -20,3 +20,11 @@ jobs:
       - name: Test
         working-directory: speech-core
         run: swift test
+
+      - name: Build (iOS Simulator)
+        working-directory: speech-core
+        run: xcodebuild -scheme SpeechCore -destination 'generic/platform=iOS Simulator' build
+
+      - name: Build (iOS)
+        working-directory: speech-core
+        run: xcodebuild -scheme SpeechCore -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build
