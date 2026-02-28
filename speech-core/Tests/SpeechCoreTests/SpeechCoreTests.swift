@@ -3,8 +3,8 @@ import Testing
 
 // MARK: - TranscriptionSegment
 
-@Test func segmentStoresFields() {
-    let seg = TranscriptionSegment(
+@Test func segmentStoresFields() throws {
+    let seg = try TranscriptionSegment(
         text: "Hello",
         startTime: 1.0,
         endTime: 2.5,
@@ -17,14 +17,20 @@ import Testing
     #expect(seg.duration == 1.5)
 }
 
-@Test func segmentConfidenceIsOptional() {
-    let seg = TranscriptionSegment(text: "Hi", startTime: 0, endTime: 1)
+@Test func segmentConfidenceIsOptional() throws {
+    let seg = try TranscriptionSegment(text: "Hi", startTime: 0, endTime: 1)
     #expect(seg.confidence == nil)
 }
 
-@Test func segmentZeroDurationIsValid() {
-    let seg = TranscriptionSegment(text: "", startTime: 1.0, endTime: 1.0)
+@Test func segmentZeroDurationIsValid() throws {
+    let seg = try TranscriptionSegment(text: "", startTime: 1.0, endTime: 1.0)
     #expect(seg.duration == 0)
+}
+
+@Test func segmentInvalidTimeRangeThrows() {
+    #expect(throws: SpeechCoreError.invalidTimeRange) {
+        try TranscriptionSegment(text: "Bad", startTime: 2.0, endTime: 1.0)
+    }
 }
 
 // MARK: - SpeechCoreError
@@ -32,16 +38,17 @@ import Testing
 @Test func errorIsEquatable() {
     #expect(SpeechCoreError.fileNotFound == SpeechCoreError.fileNotFound)
     #expect(SpeechCoreError.unsupportedFormat == SpeechCoreError.unsupportedFormat)
+    #expect(SpeechCoreError.invalidTimeRange == SpeechCoreError.invalidTimeRange)
 }
 
 // MARK: - HallucinationFilter
 
-@Test func filterRemovesShortSegments() {
-    let segments = [
-        TranscriptionSegment(text: "Hi", startTime: 0.0, endTime: 0.2),   // 0.2s → removed
-        TranscriptionSegment(text: "Hello world", startTime: 1.0, endTime: 2.0), // 1.0s → kept
-        TranscriptionSegment(text: "Ok", startTime: 3.0, endTime: 3.4),   // 0.4s → removed
-        TranscriptionSegment(text: "Good morning", startTime: 4.0, endTime: 5.5), // 1.5s → kept
+@Test func filterRemovesShortSegments() throws {
+    let segments = try [
+        TranscriptionSegment(text: "Hi", startTime: 0.0, endTime: 0.2),
+        TranscriptionSegment(text: "Hello world", startTime: 1.0, endTime: 2.0),
+        TranscriptionSegment(text: "Ok", startTime: 3.0, endTime: 3.4),
+        TranscriptionSegment(text: "Good morning", startTime: 4.0, endTime: 5.5),
     ]
     let filter = HallucinationFilter(minimumDuration: 0.5)
     let result = filter.filter(segments)
@@ -50,8 +57,8 @@ import Testing
     #expect(result[1].text == "Good morning")
 }
 
-@Test func filterKeepsAllWhenNoneShort() {
-    let segments = [
+@Test func filterKeepsAllWhenNoneShort() throws {
+    let segments = try [
         TranscriptionSegment(text: "Hello", startTime: 0.0, endTime: 1.0),
         TranscriptionSegment(text: "World", startTime: 1.0, endTime: 2.0),
     ]
@@ -60,11 +67,19 @@ import Testing
     #expect(result.count == 2)
 }
 
-@Test func filterWithDefaultThreshold() {
-    let short = TranscriptionSegment(text: "Hi", startTime: 0.0, endTime: 0.4)
-    let normal = TranscriptionSegment(text: "Hello", startTime: 1.0, endTime: 2.0)
+@Test func filterWithDefaultThreshold() throws {
+    let short = try TranscriptionSegment(text: "Hi", startTime: 0.0, endTime: 0.4)
+    let normal = try TranscriptionSegment(text: "Hello", startTime: 1.0, endTime: 2.0)
     let filter = HallucinationFilter()
     let result = filter.filter([short, normal])
     #expect(result.count == 1)
     #expect(result[0].text == "Hello")
+}
+
+@Test func filterBoundaryDurationIsKept() throws {
+    // duration == minimumDuration は除外しない（>= の境界）
+    let seg = try TranscriptionSegment(text: "Boundary", startTime: 0.0, endTime: 0.5)
+    let filter = HallucinationFilter(minimumDuration: 0.5)
+    let result = filter.filter([seg])
+    #expect(result.count == 1)
 }

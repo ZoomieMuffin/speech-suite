@@ -14,8 +14,10 @@ public struct TranscriptionSegment: Sendable {
         startTime: TimeInterval,
         endTime: TimeInterval,
         confidence: Float? = nil
-    ) {
-        precondition(endTime >= startTime, "endTime must be >= startTime")
+    ) throws(SpeechCoreError) {
+        guard endTime >= startTime else {
+            throw SpeechCoreError.invalidTimeRange
+        }
         self.text = text
         self.startTime = startTime
         self.endTime = endTime

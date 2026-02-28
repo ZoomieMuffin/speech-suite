@@ -7,6 +7,10 @@ public struct HallucinationFilter: Sendable {
     public let minimumDuration: TimeInterval
 
     public init(minimumDuration: TimeInterval = 0.5) {
+        precondition(
+            minimumDuration >= 0 && !minimumDuration.isNaN,
+            "minimumDuration must be >= 0 and not NaN"
+        )
         self.minimumDuration = minimumDuration
     }
 
