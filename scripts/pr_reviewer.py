@@ -85,12 +85,12 @@ async def analyze_with_copilot(diff: str, github_token: str) -> str:
 
 
 async def main():
-    copilot_token = os.getenv("COPILOT_GITHUB_TOKEN")
     github_token = os.getenv("GITHUB_TOKEN")
     pr_number = os.getenv("PR_NUMBER")
     repository = os.getenv("REPOSITORY")
+    copilot_token = os.getenv("COPILOT_GITHUB_TOKEN") or github_token
 
-    if not all([copilot_token, github_token, pr_number, repository]):
+    if not all([github_token, pr_number, repository]):
         print("Missing required env vars")
         sys.exit(1)
 
