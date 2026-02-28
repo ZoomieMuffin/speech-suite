@@ -27,4 +27,4 @@ jobs:
 
       - name: Build (iOS)
         working-directory: speech-core
-        run: xcodebuild -scheme SpeechCore -destination 'generic/platform=iOS' build
+        run: xcodebuild -scheme SpeechCore -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build
