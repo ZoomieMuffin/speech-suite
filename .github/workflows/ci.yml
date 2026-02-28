@@ -20,3 +20,7 @@ jobs:
       - name: Test
         working-directory: speech-core
         run: swift test
+
+      - name: Build (iOS)
+        working-directory: speech-core
+        run: xcodebuild -scheme SpeechCore -destination 'generic/platform=iOS Simulator' build
