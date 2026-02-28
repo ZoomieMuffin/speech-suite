@@ -23,18 +23,8 @@ jobs:
 
       - name: Build (iOS Simulator)
         working-directory: speech-core
-        run: |
-          swift build \
-            -Xswiftc -sdk \
-            -Xswiftc $(xcrun --sdk iphonesimulator --show-sdk-path) \
-            -Xswiftc -target \
-            -Xswiftc arm64-apple-ios17.0-simulator
+        run: xcodebuild -scheme SpeechCore -destination 'generic/platform=iOS Simulator' build
 
       - name: Build (iOS)
         working-directory: speech-core
-        run: |
-          swift build \
-            -Xswiftc -sdk \
-            -Xswiftc $(xcrun --sdk iphoneos --show-sdk-path) \
-            -Xswiftc -target \
-            -Xswiftc arm64-apple-ios17.0
+        run: xcodebuild -scheme SpeechCore -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build
