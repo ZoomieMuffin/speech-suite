@@ -7,7 +7,7 @@ import os
 import shutil
 import sys
 
-from copilot import CopilotClient
+from copilot import CopilotClient, PermissionHandler
 from github import Auth, Github
 
 
@@ -52,6 +52,7 @@ async def analyze_with_copilot(diff: str, github_token: str) -> str:
             "model": "gpt-5.3-codex",
             "reasoning_effort": "xhigh",
             "streaming": True,
+            "on_permission_request": PermissionHandler.approve_all,
         })
 
         prompt = f"""以下のPull Requestをレビューしてください。
