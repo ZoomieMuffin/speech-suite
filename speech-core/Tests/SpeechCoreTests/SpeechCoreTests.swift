@@ -50,7 +50,7 @@ import Testing
         TranscriptionSegment(text: "Ok", startTime: 3.0, endTime: 3.4),
         TranscriptionSegment(text: "Good morning", startTime: 4.0, endTime: 5.5),
     ]
-    let filter = HallucinationFilter(minimumDuration: 0.5)
+    let filter = try HallucinationFilter(minimumDuration: 0.5)
     let result = filter.filter(segments)
     #expect(result.count == 2)
     #expect(result[0].text == "Hello world")
@@ -62,7 +62,7 @@ import Testing
         TranscriptionSegment(text: "Hello", startTime: 0.0, endTime: 1.0),
         TranscriptionSegment(text: "World", startTime: 1.0, endTime: 2.0),
     ]
-    let filter = HallucinationFilter(minimumDuration: 0.5)
+    let filter = try HallucinationFilter(minimumDuration: 0.5)
     let result = filter.filter(segments)
     #expect(result.count == 2)
 }
@@ -70,16 +70,28 @@ import Testing
 @Test func filterWithDefaultThreshold() throws {
     let short = try TranscriptionSegment(text: "Hi", startTime: 0.0, endTime: 0.4)
     let normal = try TranscriptionSegment(text: "Hello", startTime: 1.0, endTime: 2.0)
-    let filter = HallucinationFilter()
+    let filter = try HallucinationFilter()
     let result = filter.filter([short, normal])
     #expect(result.count == 1)
     #expect(result[0].text == "Hello")
 }
 
+@Test func filterInvalidMinimumDurationThrows() {
+    #expect(throws: SpeechCoreError.self) {
+        try HallucinationFilter(minimumDuration: -1.0)
+    }
+    #expect(throws: SpeechCoreError.self) {
+        try HallucinationFilter(minimumDuration: .nan)
+    }
+    #expect(throws: SpeechCoreError.self) {
+        try HallucinationFilter(minimumDuration: .infinity)
+    }
+}
+
 @Test func filterBoundaryDurationIsKept() throws {
     // duration == minimumDuration は除外しない（>= の境界）
     let seg = try TranscriptionSegment(text: "Boundary", startTime: 0.0, endTime: 0.5)
-    let filter = HallucinationFilter(minimumDuration: 0.5)
+    let filter = try HallucinationFilter(minimumDuration: 0.5)
     let result = filter.filter([seg])
     #expect(result.count == 1)
 }

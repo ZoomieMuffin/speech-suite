@@ -6,11 +6,10 @@ public struct HallucinationFilter: Sendable {
     /// この秒数未満のセグメントを除外する（デフォルト 0.5秒）。
     public let minimumDuration: TimeInterval
 
-    public init(minimumDuration: TimeInterval = 0.5) {
-        precondition(
-            minimumDuration >= 0 && !minimumDuration.isNaN,
-            "minimumDuration must be >= 0 and not NaN"
-        )
+    public init(minimumDuration: TimeInterval = 0.5) throws(SpeechCoreError) {
+        guard minimumDuration >= 0, minimumDuration.isFinite else {
+            throw SpeechCoreError.invalidConfiguration("minimumDuration must be >= 0 and finite")
+        }
         self.minimumDuration = minimumDuration
     }
 

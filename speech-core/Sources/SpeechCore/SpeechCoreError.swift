@@ -4,4 +4,5 @@ public enum SpeechCoreError: Error, Equatable, Sendable {
     case unsupportedFormat
     case transcriptionFailed(String)
     case invalidTimeRange
+    case invalidConfiguration(String)
 }
