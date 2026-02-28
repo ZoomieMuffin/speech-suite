@@ -5,5 +5,5 @@ public protocol TranscriptionService: Actor {
     func start() -> AsyncThrowingStream<TranscriptionSegment, Error>
 
     /// 文字起こしを停止する。
-    func stop() async throws
+    func stop() async throws(SpeechCoreError)
 }
