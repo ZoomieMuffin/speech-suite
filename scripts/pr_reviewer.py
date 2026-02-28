@@ -102,6 +102,10 @@ async def main():
         print("Missing required env vars")
         sys.exit(1)
 
+    if not copilot_token:
+        print("COPILOT_GITHUB_TOKEN is not set, skipping review")
+        sys.exit(0)
+
     print(f"Analyzing PR #{pr_number} in {repository}")
 
     diff, pr = await get_pr_diff(repository, int(pr_number), github_token)
