@@ -22,6 +22,11 @@ import Testing
     #expect(seg.confidence == nil)
 }
 
+@Test func segmentZeroDurationIsValid() {
+    let seg = TranscriptionSegment(text: "", startTime: 1.0, endTime: 1.0)
+    #expect(seg.duration == 0)
+}
+
 // MARK: - SpeechCoreError
 
 @Test func errorIsEquatable() {

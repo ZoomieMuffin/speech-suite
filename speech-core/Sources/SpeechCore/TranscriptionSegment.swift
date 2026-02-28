@@ -15,6 +15,7 @@ public struct TranscriptionSegment: Sendable {
         endTime: TimeInterval,
         confidence: Float? = nil
     ) {
+        precondition(endTime >= startTime, "endTime must be >= startTime")
         self.text = text
         self.startTime = startTime
         self.endTime = endTime
