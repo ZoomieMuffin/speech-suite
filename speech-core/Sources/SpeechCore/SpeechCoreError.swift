@@ -5,4 +5,6 @@ public enum SpeechCoreError: Error, Equatable, Sendable {
     case transcriptionFailed(String)
     case invalidTimeRange
     case invalidConfiguration(String)
+    /// start() を既に開始済みの状態で再呼び出しした場合。
+    case alreadyStarted
 }

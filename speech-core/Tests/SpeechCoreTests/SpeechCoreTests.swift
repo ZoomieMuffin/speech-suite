@@ -63,6 +63,7 @@ import Testing
     #expect(SpeechCoreError.fileNotFound == SpeechCoreError.fileNotFound)
     #expect(SpeechCoreError.unsupportedFormat == SpeechCoreError.unsupportedFormat)
     #expect(SpeechCoreError.invalidTimeRange == SpeechCoreError.invalidTimeRange)
+    #expect(SpeechCoreError.alreadyStarted == SpeechCoreError.alreadyStarted)
 }
 
 // MARK: - HallucinationFilter
