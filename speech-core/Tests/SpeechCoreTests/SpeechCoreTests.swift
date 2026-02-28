@@ -64,6 +64,7 @@ import Testing
     #expect(SpeechCoreError.unsupportedFormat == SpeechCoreError.unsupportedFormat)
     #expect(SpeechCoreError.invalidTimeRange == SpeechCoreError.invalidTimeRange)
     #expect(SpeechCoreError.alreadyStarted == SpeechCoreError.alreadyStarted)
+    #expect(SpeechCoreError.invalidInputURL == SpeechCoreError.invalidInputURL)
 }
 
 // MARK: - HallucinationFilter
