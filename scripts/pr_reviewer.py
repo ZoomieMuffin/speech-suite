@@ -22,7 +22,7 @@ async def get_pr_diff(repo_name: str, pr_number: int, github_token: str):
         changed = f"+{pr.additions} / -{pr.deletions}"
         diff += f"**Files Changed:** {pr.changed_files} ({changed})\n\n---\n\n"
 
-        max_patch_chars = 300
+        max_patch_chars = 5000
         for file in pr.get_files():
             diff += f"\n## {file.filename} ({file.status})\n"
             diff += f"+{file.additions} / -{file.deletions}\n\n"

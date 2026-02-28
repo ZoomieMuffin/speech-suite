@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     if: |
       contains(github.event.comment.body, '@claude') &&
-      github.event.issue.pull_request != null &&
+      (github.event.issue.pull_request != null || github.event.pull_request != null) &&
       github.event.comment.user.login == github.repository_owner
 
     steps:
