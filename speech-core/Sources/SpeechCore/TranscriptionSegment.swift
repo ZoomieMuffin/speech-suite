@@ -18,6 +18,9 @@ public struct TranscriptionSegment: Sendable {
         guard startTime.isFinite, endTime.isFinite else {
             throw SpeechCoreError.invalidTimeRange
         }
+        guard startTime >= 0 else {
+            throw SpeechCoreError.invalidTimeRange
+        }
         guard endTime >= startTime else {
             throw SpeechCoreError.invalidTimeRange
         }

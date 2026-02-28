@@ -33,6 +33,12 @@ import Testing
     }
 }
 
+@Test func segmentNegativeStartTimeThrows() {
+    #expect(throws: SpeechCoreError.invalidTimeRange) {
+        try TranscriptionSegment(text: "Bad", startTime: -1.0, endTime: 0.0)
+    }
+}
+
 @Test func segmentInfiniteTimeThrows() {
     #expect(throws: SpeechCoreError.invalidTimeRange) {
         try TranscriptionSegment(text: "Bad", startTime: .infinity, endTime: .infinity)
