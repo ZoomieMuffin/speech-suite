@@ -1,11 +1,12 @@
 import Foundation
 
 /// 文字起こし結果の1セグメント。
-public struct TranscriptionSegment: Sendable {
+public struct TranscriptionSegment: Sendable, Codable, Equatable {
     public let text: String
     public let startTime: TimeInterval
     public let endTime: TimeInterval
     public let confidence: Float?
+    public let speaker: String?
 
     public var duration: TimeInterval { endTime - startTime }
 
@@ -13,7 +14,8 @@ public struct TranscriptionSegment: Sendable {
         text: String,
         startTime: TimeInterval,
         endTime: TimeInterval,
-        confidence: Float? = nil
+        confidence: Float? = nil,
+        speaker: String? = nil
     ) throws(SpeechCoreError) {
         guard startTime.isFinite, endTime.isFinite else {
             throw SpeechCoreError.invalidTimeRange
@@ -36,5 +38,6 @@ public struct TranscriptionSegment: Sendable {
         self.startTime = startTime
         self.endTime = endTime
         self.confidence = confidence
+        self.speaker = speaker
     }
 }
