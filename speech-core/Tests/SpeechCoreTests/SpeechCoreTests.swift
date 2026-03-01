@@ -34,6 +34,22 @@ import Testing
     #expect(seg.speaker == "Bob")
 }
 
+@Test func segmentDecodeInvalidTimeRangeThrows() {
+    let json = #"{"text":"Bad","startTime":5.0,"endTime":1.0}"#
+    let data = Data(json.utf8)
+    #expect(throws: DecodingError.self) {
+        try JSONDecoder().decode(TranscriptionSegment.self, from: data)
+    }
+}
+
+@Test func segmentDecodeInvalidConfidenceThrows() {
+    let json = #"{"text":"Bad","startTime":0,"endTime":1,"confidence":2.0}"#
+    let data = Data(json.utf8)
+    #expect(throws: DecodingError.self) {
+        try JSONDecoder().decode(TranscriptionSegment.self, from: data)
+    }
+}
+
 @Test func segmentStoresFields() throws {
     let seg = try TranscriptionSegment(
         text: "Hello",

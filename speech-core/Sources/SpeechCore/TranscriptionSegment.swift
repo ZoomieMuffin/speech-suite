@@ -40,4 +40,26 @@ public struct TranscriptionSegment: Sendable, Codable, Equatable {
         self.confidence = confidence
         self.speaker = speaker
     }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let text = try container.decode(String.self, forKey: .text)
+        let startTime = try container.decode(TimeInterval.self, forKey: .startTime)
+        let endTime = try container.decode(TimeInterval.self, forKey: .endTime)
+        let confidence = try container.decodeIfPresent(Float.self, forKey: .confidence)
+        let speaker = try container.decodeIfPresent(String.self, forKey: .speaker)
+        do {
+            try self.init(
+                text: text,
+                startTime: startTime,
+                endTime: endTime,
+                confidence: confidence,
+                speaker: speaker
+            )
+        } catch {
+            throw DecodingError.dataCorrupted(
+                .init(codingPath: decoder.codingPath, debugDescription: "\(error)")
+            )
+        }
+    }
 }
