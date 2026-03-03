@@ -244,3 +244,21 @@ private actor MockService: TranscriptionService {
     }
     #expect(collected.isEmpty)
 }
+
+@Test func mockFileTranscriberFinishesWithError() async throws {
+    let segments = try [
+        TranscriptionSegment(text: "Partial", startTime: 0.0, endTime: 1.0),
+    ]
+    let mock = MockFileTranscriber(segments: segments, error: SpeechCoreError.invalidInputURL)
+    let stream = mock.transcribe(fileURL: URL(string: "https://example.com/audio.wav")!, locale: Locale(identifier: "en_US"))
+    var collected: [TranscriptionSegment] = []
+    do {
+        for try await segment in stream {
+            collected.append(segment)
+        }
+        Issue.record("Expected error but stream completed normally")
+    } catch {
+        #expect(error as? SpeechCoreError == .invalidInputURL)
+    }
+    #expect(collected == segments)
+}
