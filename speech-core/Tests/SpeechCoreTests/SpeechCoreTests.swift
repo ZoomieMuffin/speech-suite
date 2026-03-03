@@ -218,3 +218,60 @@ private actor MockService: TranscriptionService {
     let available = await found!.isAvailable
     #expect(available == true)
 }
+
+// MARK: - MockFileTranscriber
+
+@Test func mockFileTranscriberYieldsSegments() async throws {
+    let segments = try [
+        TranscriptionSegment(text: "Hello", startTime: 0.0, endTime: 1.0),
+        TranscriptionSegment(text: "World", startTime: 1.0, endTime: 2.0),
+    ]
+    let mock = MockFileTranscriber(segments: segments)
+    let stream = mock.transcribe(fileURL: URL(fileURLWithPath: "/tmp/test.wav"), locale: Locale(identifier: "en_US"))
+    var collected: [TranscriptionSegment] = []
+    for try await segment in stream {
+        collected.append(segment)
+    }
+    #expect(collected == segments)
+}
+
+@Test func mockFileTranscriberEmptySegments() async throws {
+    let mock = MockFileTranscriber(segments: [])
+    let stream = mock.transcribe(fileURL: URL(fileURLWithPath: "/tmp/test.wav"), locale: Locale(identifier: "ja_JP"))
+    var collected: [TranscriptionSegment] = []
+    for try await segment in stream {
+        collected.append(segment)
+    }
+    #expect(collected.isEmpty)
+}
+
+@Test func mockFileTranscriberFinishesWithError() async throws {
+    let segments = try [
+        TranscriptionSegment(text: "Partial", startTime: 0.0, endTime: 1.0),
+    ]
+    let mock = MockFileTranscriber(segments: segments, error: SpeechCoreError.transcriptionFailed("engine error"))
+    let stream = mock.transcribe(fileURL: URL(fileURLWithPath: "/tmp/test.wav"), locale: Locale(identifier: "en_US"))
+    var collected: [TranscriptionSegment] = []
+    do {
+        for try await segment in stream {
+            collected.append(segment)
+        }
+        Issue.record("Expected error but stream completed normally")
+    } catch {
+        #expect(error as? SpeechCoreError == .transcriptionFailed("engine error"))
+    }
+    #expect(collected == segments)
+}
+
+@Test func mockFileTranscriberRejectsNonFileURL() async {
+    let mock = MockFileTranscriber(segments: [])
+    let stream = mock.transcribe(fileURL: URL(string: "https://example.com/audio.wav")!, locale: Locale(identifier: "en_US"))
+    do {
+        for try await _ in stream {
+            Issue.record("Expected error but received a segment")
+        }
+        Issue.record("Expected error but stream completed normally")
+    } catch {
+        #expect(error as? SpeechCoreError == .invalidInputURL)
+    }
+}
