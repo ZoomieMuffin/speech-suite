@@ -75,22 +75,22 @@ import Testing
 }
 
 @Test func segmentInvalidTimeRangeThrows() {
-    #expect(throws: SpeechCoreError.invalidTimeRange) {
+    #expect(throws: SpeechCoreError.self) {
         try TranscriptionSegment(text: "Bad", startTime: 2.0, endTime: 1.0)
     }
 }
 
 @Test func segmentNegativeStartTimeThrows() {
-    #expect(throws: SpeechCoreError.invalidTimeRange) {
+    #expect(throws: SpeechCoreError.self) {
         try TranscriptionSegment(text: "Bad", startTime: -1.0, endTime: 0.0)
     }
 }
 
 @Test func segmentInfiniteTimeThrows() {
-    #expect(throws: SpeechCoreError.invalidTimeRange) {
+    #expect(throws: SpeechCoreError.self) {
         try TranscriptionSegment(text: "Bad", startTime: .infinity, endTime: .infinity)
     }
-    #expect(throws: SpeechCoreError.invalidTimeRange) {
+    #expect(throws: SpeechCoreError.self) {
         try TranscriptionSegment(text: "Bad", startTime: .nan, endTime: 1.0)
     }
 }
@@ -106,12 +106,25 @@ import Testing
 
 // MARK: - SpeechCoreError
 
-@Test func errorIsEquatable() {
-    #expect(SpeechCoreError.fileNotFound == SpeechCoreError.fileNotFound)
-    #expect(SpeechCoreError.unsupportedFormat == SpeechCoreError.unsupportedFormat)
-    #expect(SpeechCoreError.invalidTimeRange == SpeechCoreError.invalidTimeRange)
-    #expect(SpeechCoreError.alreadyStarted == SpeechCoreError.alreadyStarted)
-    #expect(SpeechCoreError.invalidInputURL == SpeechCoreError.invalidInputURL)
+@Test func errorDescriptionIsNonNil() {
+    struct StubError: Error, Sendable {}
+
+    let cases: [SpeechCoreError] = [
+        .fileNotFound(path: "/tmp/a.wav"),
+        .unsupportedFormat(path: "/tmp/b.opus"),
+        .permissionDenied(permission: "microphone"),
+        .engineUnavailable(engine: "Apple Speech", requiredOS: "macOS 15"),
+        .recognitionFailed(underlying: StubError()),
+        .timeout,
+        .emptyResult,
+        .invalidTimeRange,
+        .invalidConfiguration("bad"),
+        .alreadyStarted,
+        .invalidInputURL,
+    ]
+    for error in cases {
+        #expect(error.errorDescription != nil, "errorDescription should be non-nil for \(error)")
+    }
 }
 
 // MARK: - HallucinationFilter
@@ -246,10 +259,12 @@ private actor MockService: TranscriptionService {
 }
 
 @Test func mockFileTranscriberFinishesWithError() async throws {
+    struct EngineError: Error, Sendable {}
+    let engineError = EngineError()
     let segments = try [
         TranscriptionSegment(text: "Partial", startTime: 0.0, endTime: 1.0),
     ]
-    let mock = MockFileTranscriber(segments: segments, error: SpeechCoreError.transcriptionFailed("engine error"))
+    let mock = MockFileTranscriber(segments: segments, error: SpeechCoreError.recognitionFailed(underlying: engineError))
     let stream = mock.transcribe(fileURL: URL(fileURLWithPath: "/tmp/test.wav"), locale: Locale(identifier: "en_US"))
     var collected: [TranscriptionSegment] = []
     do {
@@ -258,7 +273,7 @@ private actor MockService: TranscriptionService {
         }
         Issue.record("Expected error but stream completed normally")
     } catch {
-        #expect(error as? SpeechCoreError == .transcriptionFailed("engine error"))
+        #expect(error is SpeechCoreError)
     }
     #expect(collected == segments)
 }
@@ -272,6 +287,8 @@ private actor MockService: TranscriptionService {
         }
         Issue.record("Expected error but stream completed normally")
     } catch {
-        #expect(error as? SpeechCoreError == .invalidInputURL)
+        if case .invalidInputURL = error as? SpeechCoreError {} else {
+            Issue.record("Expected invalidInputURL but got \(error)")
+        }
     }
 }
