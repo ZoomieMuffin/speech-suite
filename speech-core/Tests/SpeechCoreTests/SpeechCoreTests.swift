@@ -1,7 +1,54 @@
+import Foundation
 import Testing
 @testable import SpeechCore
 
 // MARK: - TranscriptionSegment
+
+@Test func segmentCodableRoundTrip() throws {
+    let original = try TranscriptionSegment(
+        text: "Hello",
+        startTime: 1.0,
+        endTime: 2.5,
+        confidence: 0.9,
+        speaker: "Alice"
+    )
+    let data = try JSONEncoder().encode(original)
+    let decoded = try JSONDecoder().decode(TranscriptionSegment.self, from: data)
+    #expect(decoded == original)
+}
+
+@Test func segmentCodableRoundTripWithNils() throws {
+    let original = try TranscriptionSegment(text: "Hi", startTime: 0, endTime: 1)
+    let data = try JSONEncoder().encode(original)
+    let decoded = try JSONDecoder().decode(TranscriptionSegment.self, from: data)
+    #expect(decoded == original)
+}
+
+@Test func segmentSpeakerIsOptional() throws {
+    let seg = try TranscriptionSegment(text: "Hi", startTime: 0, endTime: 1)
+    #expect(seg.speaker == nil)
+}
+
+@Test func segmentStoresSpeaker() throws {
+    let seg = try TranscriptionSegment(text: "Hi", startTime: 0, endTime: 1, speaker: "Bob")
+    #expect(seg.speaker == "Bob")
+}
+
+@Test func segmentDecodeInvalidTimeRangeThrows() {
+    let json = #"{"text":"Bad","startTime":5.0,"endTime":1.0}"#
+    let data = Data(json.utf8)
+    #expect(throws: DecodingError.self) {
+        try JSONDecoder().decode(TranscriptionSegment.self, from: data)
+    }
+}
+
+@Test func segmentDecodeInvalidConfidenceThrows() {
+    let json = #"{"text":"Bad","startTime":0,"endTime":1,"confidence":2.0}"#
+    let data = Data(json.utf8)
+    #expect(throws: DecodingError.self) {
+        try JSONDecoder().decode(TranscriptionSegment.self, from: data)
+    }
+}
 
 @Test func segmentStoresFields() throws {
     let seg = try TranscriptionSegment(
