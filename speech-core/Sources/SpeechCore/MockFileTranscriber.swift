@@ -9,6 +9,7 @@ public struct MockFileTranscriber: FileTranscriberProtocol {
         self.error = error
     }
 
+    // locale is accepted per protocol contract but unused in mock; real implementations use it for engine configuration.
     public func transcribe(fileURL: URL, locale: Locale) -> AsyncThrowingStream<TranscriptionSegment, Error> {
         let segments = self.segments
         let error = self.error
@@ -18,7 +19,9 @@ public struct MockFileTranscriber: FileTranscriberProtocol {
                 return
             }
             for segment in segments {
-                continuation.yield(segment)
+                if case .terminated = continuation.yield(segment) {
+                    return
+                }
             }
             if let error {
                 continuation.finish(throwing: error)
