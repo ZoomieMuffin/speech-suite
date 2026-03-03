@@ -15,9 +15,12 @@ public actor TranscriberRegistry {
     }
 
     /// 現在 isAvailable == true のサービス一覧を返す。
+    /// await 中の actor 再入による Dictionary 変更を防ぐためスナップショットで反復する。
     public func availableServices() async -> [any TranscriptionService] {
+        let snapshot = Array(services.values)
         var result: [any TranscriptionService] = []
-        for svc in services.values {
+        result.reserveCapacity(snapshot.count)
+        for svc in snapshot {
             if await svc.isAvailable { result.append(svc) }
         }
         return result
