@@ -121,3 +121,53 @@ import Testing
     let result = filter.filter([seg])
     #expect(result.count == 1)
 }
+
+// MARK: - TranscriberRegistry
+
+private actor MockService: TranscriptionService {
+    nonisolated let id: String
+    var isAvailable: Bool
+
+    init(id: String, isAvailable: Bool = true) {
+        self.id = id
+        self.isAvailable = isAvailable
+    }
+
+    func start() throws(SpeechCoreError) -> AsyncThrowingStream<TranscriptionSegment, SpeechCoreError> {
+        fatalError("Not used in registry tests")
+    }
+
+    func stop() async throws(SpeechCoreError) {}
+}
+
+@Test func registryReturnsRegisteredService() async {
+    let registry = TranscriberRegistry()
+    let svc = MockService(id: "apple")
+    await registry.register(svc)
+    let found = await registry.service(for: "apple")
+    #expect(found != nil)
+    #expect(found?.id == "apple")
+}
+
+@Test func unavailableServiceExcludedFromAvailable() async {
+    let registry = TranscriberRegistry()
+    let available = MockService(id: "a", isAvailable: true)
+    let unavailable = MockService(id: "b", isAvailable: false)
+    await registry.register(available)
+    await registry.register(unavailable)
+    let result = await registry.availableServices()
+    #expect(result.count == 1)
+    #expect(result[0].id == "a")
+}
+
+@Test func duplicateRegistrationOverwrites() async {
+    let registry = TranscriberRegistry()
+    let first = MockService(id: "x", isAvailable: false)
+    let second = MockService(id: "x", isAvailable: true)
+    await registry.register(first)
+    await registry.register(second)
+    let found = await registry.service(for: "x")
+    #expect(found != nil)
+    let available = await found!.isAvailable
+    #expect(available == true)
+}
