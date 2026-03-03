@@ -41,6 +41,10 @@ public struct TranscriptionSegment: Sendable, Codable, Equatable {
         self.speaker = speaker
     }
 
+    private enum CodingKeys: String, CodingKey {
+        case text, startTime, endTime, confidence, speaker
+    }
+
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let text = try container.decode(String.self, forKey: .text)
@@ -58,7 +62,11 @@ public struct TranscriptionSegment: Sendable, Codable, Equatable {
             )
         } catch {
             throw DecodingError.dataCorrupted(
-                .init(codingPath: decoder.codingPath, debugDescription: "\(error)")
+                .init(
+                    codingPath: container.codingPath,
+                    debugDescription: "\(error)",
+                    underlyingError: error
+                )
             )
         }
     }
