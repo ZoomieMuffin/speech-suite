@@ -139,6 +139,16 @@ import Testing
     }
 }
 
+@Test func recognitionFailedIncludesUnderlyingDescription() {
+    struct EngineError: Error, Sendable, LocalizedError {
+        var errorDescription: String? { "Model loading failed" }
+    }
+    let error = SpeechCoreError.recognitionFailed(underlying: EngineError())
+    let description = error.errorDescription ?? ""
+    #expect(description.contains("Model loading failed"),
+            "errorDescription should include underlying error description, got: \(description)")
+}
+
 // MARK: - HallucinationFilter
 
 @Test func filterRemovesShortSegments() throws {

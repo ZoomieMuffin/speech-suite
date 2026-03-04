@@ -31,8 +31,8 @@ extension SpeechCoreError: LocalizedError {
             "Permission denied: \(permission)"
         case .engineUnavailable(let engine, let requiredOS):
             "\(engine) requires \(requiredOS) or later"
-        case .recognitionFailed:
-            "Recognition failed"
+        case .recognitionFailed(let underlying):
+            "Recognition failed: \(underlying.localizedDescription)"
         case .timeout:
             "Recognition timed out"
         case .emptyResult:
