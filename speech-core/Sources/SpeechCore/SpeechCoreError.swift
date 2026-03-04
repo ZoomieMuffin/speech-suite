@@ -24,15 +24,15 @@ extension SpeechCoreError: LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .fileNotFound(let path):
-            "File not found: \(path)"
+            "File not found: \(URL(fileURLWithPath: path).lastPathComponent)"
         case .unsupportedFormat(let path):
-            "Unsupported audio format: \(path)"
+            "Unsupported audio format: \(URL(fileURLWithPath: path).lastPathComponent)"
         case .permissionDenied(let permission):
             "Permission denied: \(permission)"
         case .engineUnavailable(let engine, let requiredOS):
             "\(engine) requires \(requiredOS) or later"
-        case .recognitionFailed(let underlying):
-            "Recognition failed: \(underlying.localizedDescription)"
+        case .recognitionFailed:
+            "Recognition failed"
         case .timeout:
             "Recognition timed out"
         case .emptyResult:

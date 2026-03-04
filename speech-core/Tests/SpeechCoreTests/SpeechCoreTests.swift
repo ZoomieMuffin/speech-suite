@@ -75,32 +75,44 @@ import Testing
 }
 
 @Test func segmentInvalidTimeRangeThrows() {
-    #expect(throws: SpeechCoreError.self) {
+    #expect {
         try TranscriptionSegment(text: "Bad", startTime: 2.0, endTime: 1.0)
+    } throws: { error in
+        if case SpeechCoreError.invalidTimeRange = error { true } else { false }
     }
 }
 
 @Test func segmentNegativeStartTimeThrows() {
-    #expect(throws: SpeechCoreError.self) {
+    #expect {
         try TranscriptionSegment(text: "Bad", startTime: -1.0, endTime: 0.0)
+    } throws: { error in
+        if case SpeechCoreError.invalidTimeRange = error { true } else { false }
     }
 }
 
 @Test func segmentInfiniteTimeThrows() {
-    #expect(throws: SpeechCoreError.self) {
+    #expect {
         try TranscriptionSegment(text: "Bad", startTime: .infinity, endTime: .infinity)
+    } throws: { error in
+        if case SpeechCoreError.invalidTimeRange = error { true } else { false }
     }
-    #expect(throws: SpeechCoreError.self) {
+    #expect {
         try TranscriptionSegment(text: "Bad", startTime: .nan, endTime: 1.0)
+    } throws: { error in
+        if case SpeechCoreError.invalidTimeRange = error { true } else { false }
     }
 }
 
 @Test func segmentConfidenceOutOfRangeThrows() {
-    #expect(throws: SpeechCoreError.self) {
+    #expect {
         try TranscriptionSegment(text: "Bad", startTime: 0, endTime: 1, confidence: 1.5)
+    } throws: { error in
+        if case SpeechCoreError.invalidConfiguration = error { true } else { false }
     }
-    #expect(throws: SpeechCoreError.self) {
+    #expect {
         try TranscriptionSegment(text: "Bad", startTime: 0, endTime: 1, confidence: -0.1)
+    } throws: { error in
+        if case SpeechCoreError.invalidConfiguration = error { true } else { false }
     }
 }
 
@@ -273,7 +285,10 @@ private actor MockService: TranscriptionService {
         }
         Issue.record("Expected error but stream completed normally")
     } catch {
-        #expect(error is SpeechCoreError)
+        guard case SpeechCoreError.recognitionFailed = error else {
+            Issue.record("Expected .recognitionFailed but got \(error)")
+            return
+        }
     }
     #expect(collected == segments)
 }
