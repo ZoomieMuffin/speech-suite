@@ -44,7 +44,7 @@ public struct HallucinationFilter: Sendable {
         return Self.normalizedHallucinations.contains(normalized)
     }
 
-    /// Unicode 正規化（NFKC）+ 大文字小文字/全角半角の統一 + 句読点除去 + 空白トリム。
+    /// Unicode 正規化（NFKC）+ 大文字小文字/全角半角の統一 + 句読点除去 + 内部空白圧縮。
     private static func normalize(_ text: String) -> String {
         // NFKC: 全角英数→半角、合字分解、互換文字統一
         let nfkc = text.precomposedStringWithCompatibilityMapping
@@ -53,6 +53,8 @@ public struct HallucinationFilter: Sendable {
         // 句読点・記号を除去（Unicode カテゴリ P: Punctuation）
         let stripped = folded.unicodeScalars.filter { !CharacterSet.punctuationCharacters.contains($0) }
         let result = String(String.UnicodeScalarView(stripped))
-        return result.trimmingCharacters(in: .whitespacesAndNewlines)
+        // 連続空白（改行・タブ・全角空白含む）を単一スペースに圧縮
+        let compressed = result.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        return compressed
     }
 }

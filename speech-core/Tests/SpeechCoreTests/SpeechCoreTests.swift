@@ -280,6 +280,21 @@ import Testing
     #expect(result.isEmpty, "Should detect hallucination in full-width characters")
 }
 
+@Test func filterDetectsHallucinationWithInternalWhitespace() throws {
+    let variants = [
+        "Thank   you  for  watching",   // 連続スペース
+        "Thank you\nfor watching",       // 改行
+        "Thank you\tfor\twatching",      // タブ
+        "Thank\u{3000}you for watching", // 全角空白
+    ]
+    let filter = try HallucinationFilter()
+    for text in variants {
+        let seg = try TranscriptionSegment(text: text, startTime: 0.0, endTime: 3.0)
+        let result = filter.filter([seg])
+        #expect(result.isEmpty, "Expected '\(text)' to be detected as hallucination despite irregular whitespace")
+    }
+}
+
 @Test func filterCombinesDurationAndContentFiltering() throws {
     let segments = try [
         // short + hallucination → removed (both reasons)
