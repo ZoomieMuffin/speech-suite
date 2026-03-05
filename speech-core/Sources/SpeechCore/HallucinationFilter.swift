@@ -45,12 +45,10 @@ public struct HallucinationFilter: Sendable {
     }
 
     private func isHallucination(_ text: String) -> Bool {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return false }
-        // 最長パターンの2倍を超える入力は normalize をスキップ（コスト回避）
-        if trimmed.count > Self.maxPatternLength * 2 { return false }
-        let normalized = Self.normalize(trimmed)
+        let normalized = Self.normalize(text)
         guard !normalized.isEmpty else { return false }
+        // 正規化後の長さが最長パターンを超えていればマッチしない
+        if normalized.count > Self.maxPatternLength { return false }
         return Self.normalizedHallucinations.contains(normalized)
     }
 

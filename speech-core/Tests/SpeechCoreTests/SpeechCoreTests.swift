@@ -295,6 +295,20 @@ import Testing
     }
 }
 
+@Test func filterDetectsHallucinationWithExcessivePunctuation() throws {
+    let variants = [
+        "Thank you for watching!!!!!!!!!!",
+        "Thank you for watching...!!!...!!!",
+        "ご視聴ありがとうございました。。。！！！",
+    ]
+    let filter = try HallucinationFilter()
+    for text in variants {
+        let seg = try TranscriptionSegment(text: text, startTime: 0.0, endTime: 3.0)
+        let result = filter.filter([seg])
+        #expect(result.isEmpty, "Expected '\(text)' to be detected despite excessive punctuation")
+    }
+}
+
 @Test func filterDetectsHallucinationCaseInsensitive() throws {
     let variants = [
         "THANK YOU FOR WATCHING",
