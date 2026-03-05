@@ -11,10 +11,12 @@ public struct HallucinationFilter: Sendable {
         normalizedHallucinations.map(\.count).max() ?? 0
     }()
 
-    /// 除去対象の文字セット（句読点 + 記号: emoji・数学記号等）。
+    /// 除去対象の文字セット（句読点 + 記号 + 非空白制御文字: ZWJ 等の不可視フォーマット文字を含む）。
+    /// 空白系制御文字（\n, \t 等）は空白圧縮ステップで処理するため除外。
     private static let removableCharacters: CharacterSet = {
         var cs = CharacterSet.punctuationCharacters
         cs.formUnion(.symbols)
+        cs.formUnion(CharacterSet.controlCharacters.subtracting(.whitespacesAndNewlines))
         return cs
     }()
 

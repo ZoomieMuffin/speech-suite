@@ -295,6 +295,21 @@ import Testing
     }
 }
 
+@Test func filterDetectsHallucinationWithInvisibleCharacters() throws {
+    // ZWJ (U+200D) や ZWNJ (U+200C) 等の不可視フォーマット文字
+    let variants = [
+        "Thank\u{200D} you for watching",   // ZWJ
+        "Thank\u{200C} you for watching",   // ZWNJ
+        "ご視聴\u{FEFF}ありがとうございました", // BOM
+    ]
+    let filter = try HallucinationFilter()
+    for text in variants {
+        let seg = try TranscriptionSegment(text: text, startTime: 0.0, endTime: 3.0)
+        let result = filter.filter([seg])
+        #expect(result.isEmpty, "Expected text with invisible chars to be detected as hallucination")
+    }
+}
+
 @Test func filterDetectsHallucinationWithEmojiAndSymbols() throws {
     let variants = [
         "Thank you for watching 🎬🎬🎬",
