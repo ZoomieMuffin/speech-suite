@@ -75,43 +75,78 @@ import Testing
 }
 
 @Test func segmentInvalidTimeRangeThrows() {
-    #expect(throws: SpeechCoreError.invalidTimeRange) {
+    #expect {
         try TranscriptionSegment(text: "Bad", startTime: 2.0, endTime: 1.0)
+    } throws: { error in
+        if case SpeechCoreError.invalidTimeRange = error { true } else { false }
     }
 }
 
 @Test func segmentNegativeStartTimeThrows() {
-    #expect(throws: SpeechCoreError.invalidTimeRange) {
+    #expect {
         try TranscriptionSegment(text: "Bad", startTime: -1.0, endTime: 0.0)
+    } throws: { error in
+        if case SpeechCoreError.invalidTimeRange = error { true } else { false }
     }
 }
 
 @Test func segmentInfiniteTimeThrows() {
-    #expect(throws: SpeechCoreError.invalidTimeRange) {
+    #expect {
         try TranscriptionSegment(text: "Bad", startTime: .infinity, endTime: .infinity)
+    } throws: { error in
+        if case SpeechCoreError.invalidTimeRange = error { true } else { false }
     }
-    #expect(throws: SpeechCoreError.invalidTimeRange) {
+    #expect {
         try TranscriptionSegment(text: "Bad", startTime: .nan, endTime: 1.0)
+    } throws: { error in
+        if case SpeechCoreError.invalidTimeRange = error { true } else { false }
     }
 }
 
 @Test func segmentConfidenceOutOfRangeThrows() {
-    #expect(throws: SpeechCoreError.self) {
+    #expect {
         try TranscriptionSegment(text: "Bad", startTime: 0, endTime: 1, confidence: 1.5)
+    } throws: { error in
+        if case SpeechCoreError.invalidConfiguration = error { true } else { false }
     }
-    #expect(throws: SpeechCoreError.self) {
+    #expect {
         try TranscriptionSegment(text: "Bad", startTime: 0, endTime: 1, confidence: -0.1)
+    } throws: { error in
+        if case SpeechCoreError.invalidConfiguration = error { true } else { false }
     }
 }
 
 // MARK: - SpeechCoreError
 
-@Test func errorIsEquatable() {
-    #expect(SpeechCoreError.fileNotFound == SpeechCoreError.fileNotFound)
-    #expect(SpeechCoreError.unsupportedFormat == SpeechCoreError.unsupportedFormat)
-    #expect(SpeechCoreError.invalidTimeRange == SpeechCoreError.invalidTimeRange)
-    #expect(SpeechCoreError.alreadyStarted == SpeechCoreError.alreadyStarted)
-    #expect(SpeechCoreError.invalidInputURL == SpeechCoreError.invalidInputURL)
+@Test func errorDescriptionIsNonNil() {
+    struct StubError: Error, Sendable {}
+
+    let cases: [SpeechCoreError] = [
+        .fileNotFound(path: "/tmp/a.wav"),
+        .unsupportedFormat(path: "/tmp/b.opus"),
+        .permissionDenied(permission: "microphone"),
+        .engineUnavailable(engine: "Apple Speech", requiredOS: "macOS 15"),
+        .recognitionFailed(underlying: StubError()),
+        .timeout,
+        .emptyResult,
+        .invalidTimeRange,
+        .invalidConfiguration("bad"),
+        .alreadyStarted,
+        .invalidInputURL,
+    ]
+    for error in cases {
+        #expect(error.errorDescription != nil, "errorDescription should be non-nil for \(error)")
+    }
+}
+
+@Test func recognitionFailedIncludesUnderlyingDescription() {
+    struct EngineError: Error, Sendable, LocalizedError {
+        var errorDescription: String? { "Model loading failed" }
+    }
+    let error = SpeechCoreError.recognitionFailed(underlying: EngineError())
+    let description = error.errorDescription ?? ""
+    #expect(description.contains("Model loading failed"),
+            "errorDescription should include underlying error description, got: \(description)")
 }
 
 // MARK: - HallucinationFilter
@@ -246,10 +281,12 @@ private actor MockService: TranscriptionService {
 }
 
 @Test func mockFileTranscriberFinishesWithError() async throws {
+    struct EngineError: Error, Sendable {}
+    let engineError = EngineError()
     let segments = try [
         TranscriptionSegment(text: "Partial", startTime: 0.0, endTime: 1.0),
     ]
-    let mock = MockFileTranscriber(segments: segments, error: SpeechCoreError.transcriptionFailed("engine error"))
+    let mock = MockFileTranscriber(segments: segments, error: SpeechCoreError.recognitionFailed(underlying: engineError))
     let stream = mock.transcribe(fileURL: URL(fileURLWithPath: "/tmp/test.wav"), locale: Locale(identifier: "en_US"))
     var collected: [TranscriptionSegment] = []
     do {
@@ -258,7 +295,10 @@ private actor MockService: TranscriptionService {
         }
         Issue.record("Expected error but stream completed normally")
     } catch {
-        #expect(error as? SpeechCoreError == .transcriptionFailed("engine error"))
+        guard case SpeechCoreError.recognitionFailed = error else {
+            Issue.record("Expected .recognitionFailed but got \(error)")
+            return
+        }
     }
     #expect(collected == segments)
 }
@@ -272,6 +312,8 @@ private actor MockService: TranscriptionService {
         }
         Issue.record("Expected error but stream completed normally")
     } catch {
-        #expect(error as? SpeechCoreError == .invalidInputURL)
+        if case .invalidInputURL = error as? SpeechCoreError {} else {
+            Issue.record("Expected invalidInputURL but got \(error)")
+        }
     }
 }
