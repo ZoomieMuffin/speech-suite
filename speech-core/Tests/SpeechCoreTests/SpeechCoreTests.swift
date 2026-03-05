@@ -295,6 +295,32 @@ import Testing
     }
 }
 
+@Test func filterDetectsHallucinationCaseInsensitive() throws {
+    let variants = [
+        "THANK YOU FOR WATCHING",
+        "thank you for watching",
+        "Thank You For Watching",
+        "tHaNk YoU fOr WaTcHiNg",
+        "PLEASE SUBSCRIBE",
+        "please subscribe",
+    ]
+    let filter = try HallucinationFilter()
+    for text in variants {
+        let seg = try TranscriptionSegment(text: text, startTime: 0.0, endTime: 3.0)
+        let result = filter.filter([seg])
+        #expect(result.isEmpty, "Expected '\(text)' to be detected as hallucination (case-insensitive)")
+    }
+}
+
+@Test func filterSkipsLongNormalText() throws {
+    // 最長パターンの2倍を超える長文は normalize をスキップして通過する
+    let longText = String(repeating: "This is a normal sentence. ", count: 50)
+    let seg = try TranscriptionSegment(text: longText, startTime: 0.0, endTime: 60.0)
+    let filter = try HallucinationFilter()
+    let result = filter.filter([seg])
+    #expect(result.count == 1)
+}
+
 @Test func filterCombinesDurationAndContentFiltering() throws {
     let segments = try [
         // short + hallucination → removed (both reasons)

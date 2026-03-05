@@ -6,7 +6,13 @@ public struct HallucinationFilter: Sendable {
     /// この秒数未満のセグメントを除外する（デフォルト 0.5秒）。
     public let minimumDuration: TimeInterval
 
+    /// 正規化後の最長パターン文字数。これより長い入力は normalize をスキップできる。
+    private static let maxPatternLength: Int = {
+        normalizedHallucinations.map(\.count).max() ?? 0
+    }()
+
     /// 事前正規化済みのハルシネーションパターン Set（O(1) 判定）。
+    /// 完全一致で判定する（部分一致にすると通常発話の誤検知リスクが高い）。
     private static let normalizedHallucinations: Set<String> = {
         let patterns = [
             // Japanese
@@ -39,7 +45,11 @@ public struct HallucinationFilter: Sendable {
     }
 
     private func isHallucination(_ text: String) -> Bool {
-        let normalized = Self.normalize(text)
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        // 最長パターンの2倍を超える入力は normalize をスキップ（コスト回避）
+        if trimmed.count > Self.maxPatternLength * 2 { return false }
+        let normalized = Self.normalize(trimmed)
         guard !normalized.isEmpty else { return false }
         return Self.normalizedHallucinations.contains(normalized)
     }
