@@ -6,9 +6,16 @@ public struct HallucinationFilter: Sendable {
     /// この秒数未満のセグメントを除外する（デフォルト 0.5秒）。
     public let minimumDuration: TimeInterval
 
-    /// 正規化後の最長パターン文字数。これより長い入力は normalize をスキップできる。
+    /// 正規化後の最長パターン文字数。正規化後にこれを超える入力は Set lookup を省略する。
     private static let maxPatternLength: Int = {
         normalizedHallucinations.map(\.count).max() ?? 0
+    }()
+
+    /// 除去対象の文字セット（句読点 + 記号: emoji・数学記号等）。
+    private static let removableCharacters: CharacterSet = {
+        var cs = CharacterSet.punctuationCharacters
+        cs.formUnion(.symbols)
+        return cs
     }()
 
     /// 事前正規化済みのハルシネーションパターン Set（O(1) 判定）。
@@ -52,14 +59,14 @@ public struct HallucinationFilter: Sendable {
         return Self.normalizedHallucinations.contains(normalized)
     }
 
-    /// Unicode 正規化（NFKC）+ 大文字小文字/全角半角の統一 + 句読点除去 + 内部空白圧縮。
+    /// Unicode 正規化（NFKC）+ 大文字小文字/全角半角の統一 + 句読点・記号除去 + 内部空白圧縮。
     private static func normalize(_ text: String) -> String {
         // NFKC: 全角英数→半角、合字分解、互換文字統一
         let nfkc = text.precomposedStringWithCompatibilityMapping
         // case fold + diacritic strip
         let folded = nfkc.folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive], locale: nil)
-        // 句読点・記号を除去（Unicode カテゴリ P: Punctuation）
-        let stripped = folded.unicodeScalars.filter { !CharacterSet.punctuationCharacters.contains($0) }
+        // 句読点・記号（emoji 含む）を除去
+        let stripped = folded.unicodeScalars.filter { !removableCharacters.contains($0) }
         let result = String(String.UnicodeScalarView(stripped))
         // 連続空白（改行・タブ・全角空白含む）を単一スペースに圧縮
         let compressed = result.split(whereSeparator: \.isWhitespace).joined(separator: " ")

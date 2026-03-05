@@ -295,6 +295,20 @@ import Testing
     }
 }
 
+@Test func filterDetectsHallucinationWithEmojiAndSymbols() throws {
+    let variants = [
+        "Thank you for watching 🎬🎬🎬",
+        "ご視聴ありがとうございました ❤️🙏",
+        "Please subscribe ▶️🔔",
+    ]
+    let filter = try HallucinationFilter()
+    for text in variants {
+        let seg = try TranscriptionSegment(text: text, startTime: 0.0, endTime: 3.0)
+        let result = filter.filter([seg])
+        #expect(result.isEmpty, "Expected '\(text)' to be detected despite emoji/symbols")
+    }
+}
+
 @Test func filterDetectsHallucinationWithExcessivePunctuation() throws {
     let variants = [
         "Thank you for watching!!!!!!!!!!",
