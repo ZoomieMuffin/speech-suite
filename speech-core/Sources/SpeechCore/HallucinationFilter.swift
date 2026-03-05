@@ -6,21 +6,24 @@ public struct HallucinationFilter: Sendable {
     /// この秒数未満のセグメントを除外する（デフォルト 0.5秒）。
     public let minimumDuration: TimeInterval
 
-    /// 既知のハルシネーションパターン（完全一致、トリム後）。
-    private static let knownHallucinations: [String] = [
-        // Japanese
-        "ご視聴ありがとうございました",
-        "チャンネル登録よろしくお願いします",
-        "いいねとチャンネル登録お願いします",
-        "チャンネル登録お願いします",
-        "高評価お願いします",
-        "ご視聴ありがとうございます",
-        // English
-        "Thank you for watching",
-        "Thanks for watching",
-        "Please subscribe",
-        "Like and subscribe",
-    ]
+    /// 事前正規化済みのハルシネーションパターン Set（O(1) 判定）。
+    private static let normalizedHallucinations: Set<String> = {
+        let patterns = [
+            // Japanese
+            "ご視聴ありがとうございました",
+            "チャンネル登録よろしくお願いします",
+            "いいねとチャンネル登録お願いします",
+            "チャンネル登録お願いします",
+            "高評価お願いします",
+            "ご視聴ありがとうございます",
+            // English
+            "Thank you for watching",
+            "Thanks for watching",
+            "Please subscribe",
+            "Like and subscribe",
+        ]
+        return Set(patterns.map { normalize($0) })
+    }()
 
     public init(minimumDuration: TimeInterval = 0.5) throws(SpeechCoreError) {
         guard minimumDuration >= 0, minimumDuration.isFinite else {
@@ -36,11 +39,20 @@ public struct HallucinationFilter: Sendable {
     }
 
     private func isHallucination(_ text: String) -> Bool {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return false }
-        let lowercased = trimmed.lowercased()
-        return Self.knownHallucinations.contains { pattern in
-            lowercased == pattern.lowercased()
-        }
+        let normalized = Self.normalize(text)
+        guard !normalized.isEmpty else { return false }
+        return Self.normalizedHallucinations.contains(normalized)
+    }
+
+    /// Unicode 正規化（NFKC）+ 大文字小文字/全角半角の統一 + 句読点除去 + 空白トリム。
+    private static func normalize(_ text: String) -> String {
+        // NFKC: 全角英数→半角、合字分解、互換文字統一
+        let nfkc = text.precomposedStringWithCompatibilityMapping
+        // case fold + diacritic strip
+        let folded = nfkc.folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive], locale: nil)
+        // 句読点・記号を除去（Unicode カテゴリ P: Punctuation）
+        let stripped = folded.unicodeScalars.filter { !CharacterSet.punctuationCharacters.contains($0) }
+        let result = String(String.UnicodeScalarView(stripped))
+        return result.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
