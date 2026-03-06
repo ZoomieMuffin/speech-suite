@@ -1,0 +1,32 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build AudioInput (Release)
+        working-directory: audio-input
+        run: swift build -c release
+
+      - name: Package binary
+        run: |
+          BINARY_PATH="audio-input/.build/release/AudioInput"
+          ARCHIVE="AudioInput-$(git describe --tags --always).tar.gz"
+          tar czf "$ARCHIVE" -C "$(dirname "$BINARY_PATH")" "$(basename "$BINARY_PATH")"
+          echo "ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ARCHIVE }}
+          generate_release_notes: true
