@@ -28,14 +28,16 @@ jobs:
 
       - name: Build AudioInput (Release)
         working-directory: audio-input
-        run: swift build -c release
+        run: swift build -c release --product AudioInput
 
       - name: Package binary and generate checksum
+        working-directory: audio-input
         run: |
+          BIN_PATH="$(swift build -c release --product AudioInput --show-bin-path)/AudioInput"
           ARCHIVE="AudioInput-$(git describe --tags --always).tar.gz"
-          tar czf "$ARCHIVE" -C audio-input/.build/release AudioInput
+          tar czf "$ARCHIVE" -C "$(dirname "$BIN_PATH")" AudioInput
           shasum -a 256 "$ARCHIVE" > "${ARCHIVE}.sha256"
-          echo "ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"
+          echo "ARCHIVE=audio-input/$ARCHIVE" >> "$GITHUB_ENV"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2

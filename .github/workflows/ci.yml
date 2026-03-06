@@ -34,22 +34,11 @@ jobs:
           key: ${{ runner.os }}-${{ runner.arch }}-spm-audio-input-${{ hashFiles('audio-input/Package.resolved', 'audio-input/Package.swift') }}
           restore-keys: ${{ runner.os }}-${{ runner.arch }}-spm-audio-input-
 
-      - name: Check test targets exist
-        id: check-tests
+      - name: Build and Test
         working-directory: audio-input
         run: |
-          if find Tests -name '*.swift' 2>/dev/null | grep -q .; then
-            echo "has_tests=true" >> "$GITHUB_OUTPUT"
+          if swift package describe --type json 2>/dev/null | python3 -c "import sys,json; sys.exit(0 if any(t['type']=='test' for t in json.load(sys.stdin)['targets']) else 1)"; then
+            swift test
           else
-            echo "has_tests=false" >> "$GITHUB_OUTPUT"
+            swift build
           fi
-
-      - name: Build
-        if: steps.check-tests.outputs.has_tests == 'false'
-        working-directory: audio-input
-        run: swift build
-
-      - name: Test
-        if: steps.check-tests.outputs.has_tests == 'true'
-        working-directory: audio-input
-        run: swift test
