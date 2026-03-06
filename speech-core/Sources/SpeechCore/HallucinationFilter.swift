@@ -11,11 +11,12 @@ public struct HallucinationFilter: Sendable {
         normalizedHallucinations.map(\.count).max() ?? 0
     }()
 
-    /// 除去対象の文字セット（句読点 + 記号 + 非空白制御文字: ZWJ 等の不可視フォーマット文字を含む）。
-    /// 空白系制御文字（\n, \t 等）は空白圧縮ステップで処理するため除外。
+    /// 除去対象の文字セット（句読点 + 記号 + 結合文字 + 非空白制御文字）。
+    /// 結合文字（variation selector 等）はロケール固定の folding では除去されないため明示的に含める。
     private static let removableCharacters: CharacterSet = {
         var cs = CharacterSet.punctuationCharacters
         cs.formUnion(.symbols)
+        cs.formUnion(.nonBaseCharacters)
         cs.formUnion(CharacterSet.controlCharacters.subtracting(.whitespacesAndNewlines))
         return cs
     }()
@@ -66,12 +67,12 @@ public struct HallucinationFilter: Sendable {
         // NFKC: 全角英数→半角、合字分解、互換文字統一
         let nfkc = text.precomposedStringWithCompatibilityMapping
         // case fold + diacritic strip
-        let folded = nfkc.folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive], locale: nil)
+        let folded = nfkc.folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive], locale: Locale(identifier: "en_US_POSIX"))
         // 句読点・記号（emoji 含む）を除去
         let stripped = folded.unicodeScalars.filter { !removableCharacters.contains($0) }
         let result = String(String.UnicodeScalarView(stripped))
-        // 連続空白（改行・タブ・全角空白含む）を単一スペースに圧縮
-        let compressed = result.split(whereSeparator: \.isWhitespace).joined(separator: " ")
-        return compressed
+        // 空白を全除去（空白混入によるすり抜けを防止）
+        let compressed = result.unicodeScalars.filter { !CharacterSet.whitespacesAndNewlines.contains($0) }
+        return String(String.UnicodeScalarView(compressed))
     }
 }

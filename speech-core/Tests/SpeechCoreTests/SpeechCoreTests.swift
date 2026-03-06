@@ -286,6 +286,8 @@ import Testing
         "Thank you\nfor watching",       // 改行
         "Thank you\tfor\twatching",      // タブ
         "Thank\u{3000}you for watching", // 全角空白
+        "ご視聴 ありがとうございました",        // 日本語への空白混入
+        "チャンネル 登録 お願いします",         // 日本語への空白混入（複数箇所）
     ]
     let filter = try HallucinationFilter()
     for text in variants {
