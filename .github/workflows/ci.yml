@@ -8,7 +8,7 @@ jobs:
   speech-core:
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Build
         working-directory: speech-core
@@ -29,10 +29,10 @@ jobs:
   audio-input:
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Cache SwiftPM
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: audio-input/.build
           key: ${{ runner.os }}-spm-audio-input-${{ hashFiles('audio-input/Package.resolved', 'audio-input/Package.swift') }}
@@ -42,6 +42,17 @@ jobs:
         working-directory: audio-input
         run: swift build
 
-      - name: Test
+      - name: Check test targets exist
+        id: check-tests
         working-directory: audio-input
-        run: swift test || true  # テストターゲット未作成のため暫定で許容
+        run: |
+          if ls Tests/*/*.swift 1>/dev/null 2>&1; then
+            echo "has_tests=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_tests=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Test
+        if: steps.check-tests.outputs.has_tests == 'true'
+        working-directory: audio-input
+        run: swift test
