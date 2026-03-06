@@ -33,7 +33,7 @@ jobs:
       - name: Package binary and generate checksum
         working-directory: audio-input
         run: |
-          BIN_PATH="$(swift build -c release --product AudioInput --show-bin-path)/AudioInput"
+          BIN_PATH="$(swift build -c release --show-bin-path)/AudioInput"
           ARCHIVE="AudioInput-$(git describe --tags --always).tar.gz"
           tar czf "$ARCHIVE" -C "$(dirname "$BIN_PATH")" AudioInput
           shasum -a 256 "$ARCHIVE" > "${ARCHIVE}.sha256"

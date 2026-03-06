@@ -37,7 +37,9 @@ jobs:
       - name: Build and Test
         working-directory: audio-input
         run: |
-          if swift package describe --type json 2>/dev/null | python3 -c "import sys,json; sys.exit(0 if any(t['type']=='test' for t in json.load(sys.stdin)['targets']) else 1)"; then
+          set -euo pipefail
+          HAS_TESTS=$(swift package describe --type json | python3 -c "import sys,json; print('true' if any(t['type']=='test' for t in json.load(sys.stdin)['targets']) else 'false')")
+          if [ "$HAS_TESTS" = "true" ]; then
             swift test
           else
             swift build
