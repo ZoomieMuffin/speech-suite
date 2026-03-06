@@ -1,0 +1,48 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch main for tag verification
+        run: git fetch origin main --depth=1
+
+      - name: Verify tag is on main
+        run: |
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::Tag must be on the main branch"
+            exit 1
+          fi
+
+      - name: Build AudioInput (Release)
+        working-directory: audio-input
+        run: swift build -c release --product AudioInput
+
+      - name: Package binary and generate checksum
+        working-directory: audio-input
+        run: |
+          BIN_PATH="$(swift build -c release --show-bin-path)/AudioInput"
+          ARCHIVE="AudioInput-$(git describe --tags --always).tar.gz"
+          tar czf "$ARCHIVE" -C "$(dirname "$BIN_PATH")" AudioInput
+          shasum -a 256 "$ARCHIVE" > "${ARCHIVE}.sha256"
+          echo "ARCHIVE=audio-input/$ARCHIVE" >> "$GITHUB_ENV"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
+        with:
+          files: |
+            ${{ env.ARCHIVE }}
+            ${{ env.ARCHIVE }}.sha256
+          generate_release_notes: true
