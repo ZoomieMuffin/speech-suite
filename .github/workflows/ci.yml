@@ -10,10 +10,6 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      - name: Build
-        working-directory: speech-core
-        run: swift build
-
       - name: Test
         working-directory: speech-core
         run: swift test
@@ -38,19 +34,20 @@ jobs:
           key: ${{ runner.os }}-${{ runner.arch }}-spm-audio-input-${{ hashFiles('audio-input/Package.resolved', 'audio-input/Package.swift') }}
           restore-keys: ${{ runner.os }}-${{ runner.arch }}-spm-audio-input-
 
-      - name: Build
-        working-directory: audio-input
-        run: swift build
-
       - name: Check test targets exist
         id: check-tests
         working-directory: audio-input
         run: |
-          if ls Tests/*/*.swift 1>/dev/null 2>&1; then
+          if find Tests -name '*.swift' 2>/dev/null | grep -q .; then
             echo "has_tests=true" >> "$GITHUB_OUTPUT"
           else
             echo "has_tests=false" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Build
+        if: steps.check-tests.outputs.has_tests == 'false'
+        working-directory: audio-input
+        run: swift build
 
       - name: Test
         if: steps.check-tests.outputs.has_tests == 'true'
