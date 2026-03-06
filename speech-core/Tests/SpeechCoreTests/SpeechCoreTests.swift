@@ -204,6 +204,185 @@ import Testing
     #expect(result.count == 1)
 }
 
+// MARK: - HallucinationFilter (content-based)
+
+@Test func filterDetectsKnownHallucinationStrings() throws {
+    let segments = try [
+        TranscriptionSegment(text: "ご視聴ありがとうございました", startTime: 0.0, endTime: 3.0),
+        TranscriptionSegment(text: "こんにちは世界", startTime: 3.0, endTime: 5.0),
+    ]
+    let filter = try HallucinationFilter()
+    let result = filter.filter(segments)
+    #expect(result.count == 1)
+    #expect(result[0].text == "こんにちは世界")
+}
+
+@Test func filterDetectsMultipleHallucinationPatterns() throws {
+    let hallucinationTexts = [
+        "ご視聴ありがとうございました",
+        "チャンネル登録よろしくお願いします",
+        "Thank you for watching",
+        "Thanks for watching",
+        "Please subscribe",
+        "いいねとチャンネル登録お願いします",
+    ]
+    for text in hallucinationTexts {
+        let seg = try TranscriptionSegment(text: text, startTime: 0.0, endTime: 3.0)
+        let filter = try HallucinationFilter()
+        let result = filter.filter([seg])
+        #expect(result.isEmpty, "Expected '\(text)' to be detected as hallucination")
+    }
+}
+
+@Test func filterPassesNormalText() throws {
+    let normalTexts = [
+        "今日の天気は晴れです",
+        "会議は15時から始まります",
+        "Hello, how are you doing today?",
+        "The quick brown fox jumps over the lazy dog",
+    ]
+    for text in normalTexts {
+        let seg = try TranscriptionSegment(text: text, startTime: 0.0, endTime: 3.0)
+        let filter = try HallucinationFilter()
+        let result = filter.filter([seg])
+        #expect(result.count == 1, "Expected '\(text)' to pass through filter")
+    }
+}
+
+@Test func filterDetectsHallucinationWithWhitespace() throws {
+    let seg = try TranscriptionSegment(text: "  ご視聴ありがとうございました  ", startTime: 0.0, endTime: 3.0)
+    let filter = try HallucinationFilter()
+    let result = filter.filter([seg])
+    #expect(result.isEmpty, "Should detect hallucination even with surrounding whitespace")
+}
+
+@Test func filterDetectsHallucinationWithPunctuation() throws {
+    let variants = [
+        "Thank you for watching.",
+        "Thank you for watching!",
+        "Thank you for watching...",
+        "ご視聴ありがとうございました。",
+        "ご視聴ありがとうございました！",
+    ]
+    let filter = try HallucinationFilter()
+    for text in variants {
+        let seg = try TranscriptionSegment(text: text, startTime: 0.0, endTime: 3.0)
+        let result = filter.filter([seg])
+        #expect(result.isEmpty, "Expected '\(text)' to be detected as hallucination despite punctuation")
+    }
+}
+
+@Test func filterDetectsFullWidthHallucination() throws {
+    // 全角英数: "Ｔｈａｎｋ ｙｏｕ ｆｏｒ ｗａｔｃｈｉｎｇ"
+    let seg = try TranscriptionSegment(text: "\u{FF34}\u{FF48}\u{FF41}\u{FF4E}\u{FF4B} \u{FF59}\u{FF4F}\u{FF55} \u{FF46}\u{FF4F}\u{FF52} \u{FF57}\u{FF41}\u{FF54}\u{FF43}\u{FF48}\u{FF49}\u{FF4E}\u{FF47}", startTime: 0.0, endTime: 3.0)
+    let filter = try HallucinationFilter()
+    let result = filter.filter([seg])
+    #expect(result.isEmpty, "Should detect hallucination in full-width characters")
+}
+
+@Test func filterDetectsHallucinationWithInternalWhitespace() throws {
+    let variants = [
+        "Thank   you  for  watching",   // 連続スペース
+        "Thank you\nfor watching",       // 改行
+        "Thank you\tfor\twatching",      // タブ
+        "Thank\u{3000}you for watching", // 全角空白
+        "ご視聴 ありがとうございました",        // 日本語への空白混入
+        "チャンネル 登録 お願いします",         // 日本語への空白混入（複数箇所）
+    ]
+    let filter = try HallucinationFilter()
+    for text in variants {
+        let seg = try TranscriptionSegment(text: text, startTime: 0.0, endTime: 3.0)
+        let result = filter.filter([seg])
+        #expect(result.isEmpty, "Expected '\(text)' to be detected as hallucination despite irregular whitespace")
+    }
+}
+
+@Test func filterDetectsHallucinationWithInvisibleCharacters() throws {
+    // ZWJ (U+200D) や ZWNJ (U+200C) 等の不可視フォーマット文字
+    let variants = [
+        "Thank\u{200D} you for watching",   // ZWJ
+        "Thank\u{200C} you for watching",   // ZWNJ
+        "ご視聴\u{FEFF}ありがとうございました", // BOM
+    ]
+    let filter = try HallucinationFilter()
+    for text in variants {
+        let seg = try TranscriptionSegment(text: text, startTime: 0.0, endTime: 3.0)
+        let result = filter.filter([seg])
+        #expect(result.isEmpty, "Expected text with invisible chars to be detected as hallucination")
+    }
+}
+
+@Test func filterDetectsHallucinationWithEmojiAndSymbols() throws {
+    let variants = [
+        "Thank you for watching 🎬🎬🎬",
+        "ご視聴ありがとうございました ❤️🙏",
+        "Please subscribe ▶️🔔",
+    ]
+    let filter = try HallucinationFilter()
+    for text in variants {
+        let seg = try TranscriptionSegment(text: text, startTime: 0.0, endTime: 3.0)
+        let result = filter.filter([seg])
+        #expect(result.isEmpty, "Expected '\(text)' to be detected despite emoji/symbols")
+    }
+}
+
+@Test func filterDetectsHallucinationWithExcessivePunctuation() throws {
+    let variants = [
+        "Thank you for watching!!!!!!!!!!",
+        "Thank you for watching...!!!...!!!",
+        "ご視聴ありがとうございました。。。！！！",
+    ]
+    let filter = try HallucinationFilter()
+    for text in variants {
+        let seg = try TranscriptionSegment(text: text, startTime: 0.0, endTime: 3.0)
+        let result = filter.filter([seg])
+        #expect(result.isEmpty, "Expected '\(text)' to be detected despite excessive punctuation")
+    }
+}
+
+@Test func filterDetectsHallucinationCaseInsensitive() throws {
+    let variants = [
+        "THANK YOU FOR WATCHING",
+        "thank you for watching",
+        "Thank You For Watching",
+        "tHaNk YoU fOr WaTcHiNg",
+        "PLEASE SUBSCRIBE",
+        "please subscribe",
+    ]
+    let filter = try HallucinationFilter()
+    for text in variants {
+        let seg = try TranscriptionSegment(text: text, startTime: 0.0, endTime: 3.0)
+        let result = filter.filter([seg])
+        #expect(result.isEmpty, "Expected '\(text)' to be detected as hallucination (case-insensitive)")
+    }
+}
+
+@Test func filterSkipsLongNormalText() throws {
+    // 最長パターンの2倍を超える長文は normalize をスキップして通過する
+    let longText = String(repeating: "This is a normal sentence. ", count: 50)
+    let seg = try TranscriptionSegment(text: longText, startTime: 0.0, endTime: 60.0)
+    let filter = try HallucinationFilter()
+    let result = filter.filter([seg])
+    #expect(result.count == 1)
+}
+
+@Test func filterCombinesDurationAndContentFiltering() throws {
+    let segments = try [
+        // short + hallucination → removed (both reasons)
+        TranscriptionSegment(text: "ご視聴ありがとうございました", startTime: 0.0, endTime: 0.2),
+        // short + normal → removed (duration)
+        TranscriptionSegment(text: "Hi", startTime: 1.0, endTime: 1.2),
+        // long + hallucination → removed (content)
+        TranscriptionSegment(text: "Thank you for watching", startTime: 2.0, endTime: 5.0),
+        // long + normal → kept
+        TranscriptionSegment(text: "Good morning everyone", startTime: 5.0, endTime: 7.0),
+    ]
+    let filter = try HallucinationFilter()
+    let result = filter.filter(segments)
+    #expect(result.count == 1)
+    #expect(result[0].text == "Good morning everyone")
+}
+
 // MARK: - TranscriberRegistry
 
 private actor MockService: TranscriptionService {
