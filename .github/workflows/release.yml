@@ -13,6 +13,15 @@ jobs:
     runs-on: macos-26
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify tag is on main
+        run: |
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::Tag must be on the main branch"
+            exit 1
+          fi
 
       - name: Build AudioInput (Release)
         working-directory: audio-input
@@ -20,10 +29,8 @@ jobs:
 
       - name: Package binary
         run: |
-          PRODUCT_NAME=$(cd audio-input && swift package describe --type json 2>/dev/null | python3 -c "import sys,json; ts=json.load(sys.stdin)['targets']; print(next(t['name'] for t in ts if t['type']=='executable'))")
-          BINARY_PATH="audio-input/.build/release/${PRODUCT_NAME}"
-          ARCHIVE="${PRODUCT_NAME}-$(git describe --tags --always).tar.gz"
-          tar czf "$ARCHIVE" -C "$(dirname "$BINARY_PATH")" "$(basename "$BINARY_PATH")"
+          ARCHIVE="AudioInput-$(git describe --tags --always).tar.gz"
+          tar czf "$ARCHIVE" -C audio-input/.build/release AudioInput
           echo "ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"
 
       - name: Create GitHub Release
