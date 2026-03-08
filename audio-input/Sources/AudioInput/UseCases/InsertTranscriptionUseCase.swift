@@ -9,6 +9,9 @@ public actor InsertTranscriptionUseCase {
     private let textProcessor: (any TextProcessorProtocol)?
     private let inserter: any TextInserterProtocol
     private let hallucinationFilter: HallucinationFilter
+
+    private enum State { case idle, active, stopping }
+    private var state: State = .idle
     private var streamTask: Task<[TranscriptionSegment], any Error>?
 
     public init(
@@ -28,49 +31,56 @@ public actor InsertTranscriptionUseCase {
     /// 録音を開始し、セグメントの蓄積を始める。
     /// 既に開始済みの場合は SpeechCoreError.alreadyStarted を throw する。
     public func start() async throws {
-        guard streamTask == nil else { throw SpeechCoreError.alreadyStarted }
-        try await recorder.startRecording()
-        let stream: AsyncThrowingStream<TranscriptionSegment, SpeechCoreError>
+        guard state == .idle else { throw SpeechCoreError.alreadyStarted }
+        // await 前に状態を確保して reentrancy を防ぐ
+        state = .active
         do {
-            stream = try await transcriptionService.start()
-        } catch {
-            try? await stopRecorder()
-            throw error
-        }
-        streamTask = Task { [hallucinationFilter] in
-            var segments: [TranscriptionSegment] = []
-            for try await segment in stream {
-                try Task.checkCancellation()
-                let filtered = hallucinationFilter.filter([segment])
-                if let seg = filtered.first {
-                    segments.append(seg)
+            try await recorder.startRecording()
+            let stream = try await transcriptionService.start()
+            streamTask = Task { [hallucinationFilter] in
+                var segments: [TranscriptionSegment] = []
+                for try await segment in stream {
+                    try Task.checkCancellation()
+                    let filtered = hallucinationFilter.filter([segment])
+                    if let seg = filtered.first {
+                        segments.append(seg)
+                    }
                 }
+                return segments
             }
-            return segments
+        } catch {
+            streamTask = nil
+            _ = try? await recorder.stopRecording()
+            state = .idle
+            throw error
         }
     }
 
     /// 録音を停止し、蓄積したセグメントを結合してカーソル位置に挿入する。
     public func stop() async throws {
-        // transcription を先に停止して最終セグメントを確定させる
+        guard state == .active, let task = streamTask else { return }
+        // await 前に状態とタスクを退避して reentrancy を防ぐ
+        state = .stopping
+        streamTask = nil
+
         var segments: [TranscriptionSegment] = []
         var firstError: (any Error)?
         do {
             try await transcriptionService.stop()
-            segments = try await streamTask?.value ?? []
+            segments = try await task.value
         } catch {
             firstError = error
-            streamTask?.cancel()
-            _ = try? await streamTask?.value
+            task.cancel()
+            _ = try? await task.value
         }
-        streamTask = nil
-        // 録音は必ず停止する — 先行エラーがなければ stop エラーを伝播
+
         do {
-            try await stopRecorder()
+            _ = try await recorder.stopRecording()
         } catch where firstError == nil {
             firstError = error
         }
 
+        state = .idle
         if let error = firstError { throw error }
         guard !segments.isEmpty else { return }
         var text = segments.map(\.text).joined()
@@ -78,9 +88,5 @@ public actor InsertTranscriptionUseCase {
             text = try await processor.process(text)
         }
         try await inserter.insert(text)
-    }
-
-    private func stopRecorder() async throws {
-        _ = try await recorder.stopRecording()
     }
 }
