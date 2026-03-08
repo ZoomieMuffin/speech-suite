@@ -27,13 +27,15 @@ public actor AppendDailyVoiceNoteUseCase {
     }
 
     /// 録音を開始し、セグメントの蓄積を始める。
+    /// 既に開始済みの場合は SpeechCoreError.alreadyStarted を throw する。
     public func start() async throws {
+        guard streamTask == nil else { throw SpeechCoreError.alreadyStarted }
         try await recorder.startRecording()
         let stream: AsyncThrowingStream<TranscriptionSegment, SpeechCoreError>
         do {
             stream = try await transcriptionService.start()
         } catch {
-            _ = try? await recorder.stopRecording()
+            try? await stopRecorder()
             throw error
         }
         streamTask = Task { [hallucinationFilter] in
@@ -64,8 +66,12 @@ public actor AppendDailyVoiceNoteUseCase {
             _ = try? await streamTask?.value
         }
         streamTask = nil
-        // 録音は必ず停止する
-        _ = try? await recorder.stopRecording()
+        // 録音は必ず停止する — 先行エラーがなければ stop エラーを伝播
+        do {
+            try await stopRecorder()
+        } catch where firstError == nil {
+            firstError = error
+        }
 
         if let error = firstError { throw error }
         guard !segments.isEmpty else { return }
@@ -81,5 +87,9 @@ public actor AppendDailyVoiceNoteUseCase {
         let formatter = DateFormatter()
         formatter.dateFormat = "HH:mm"
         return formatter.string(from: Date())
+    }
+
+    private func stopRecorder() async throws {
+        _ = try await recorder.stopRecording()
     }
 }
