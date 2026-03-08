@@ -20,8 +20,8 @@ def get_pr_diff(repo_name: str, pr_number: int, github_token: str):
         changed = f"+{pr.additions} / -{pr.deletions}"
         diff += f"**Files Changed:** {pr.changed_files} ({changed})\n\n---\n\n"
 
-        max_patch_chars = 5000
-        max_total_chars = 50000
+        max_patch_chars = 3000
+        max_total_chars = 30000
         total_chars = len(diff)
         for file in pr.get_files():
             if total_chars >= max_total_chars:
@@ -65,7 +65,7 @@ def analyze_with_copilot(diff: str, github_token: str) -> str:
         ["copilot", "-p", prompt, "--model", "gpt-5.4", "-s", "--no-auto-update"],
         capture_output=True,
         text=True,
-        timeout=300,
+        timeout=600,
         env={**os.environ, "GITHUB_TOKEN": github_token},
     )
 
