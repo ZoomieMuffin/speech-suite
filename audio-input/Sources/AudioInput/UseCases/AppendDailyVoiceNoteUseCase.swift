@@ -83,10 +83,11 @@ public actor AppendDailyVoiceNoteUseCase {
         state = .idle
         if let error = firstError { throw error }
         guard !segments.isEmpty else { return }
-        var text = segments.map(\.text).joined()
+        var text = segments.map(\.text).joined(separator: " ")
         if let processor = textProcessor {
             text = try await processor.process(text)
         }
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         let timestamp = currentTimestamp()
         try await sink.write("- [\(timestamp)] \(text)\n")
     }
