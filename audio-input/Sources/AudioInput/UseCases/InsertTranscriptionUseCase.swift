@@ -32,7 +32,6 @@ public actor InsertTranscriptionUseCase {
     /// 既に開始済みの場合は SpeechCoreError.alreadyStarted を throw する。
     public func start() async throws {
         guard state == .idle else { throw SpeechCoreError.alreadyStarted }
-        // await 前に状態を確保して reentrancy を防ぐ
         state = .active
         do {
             try await recorder.startRecording()
@@ -59,9 +58,10 @@ public actor InsertTranscriptionUseCase {
     /// 録音を停止し、蓄積したセグメントを結合してカーソル位置に挿入する。
     public func stop() async throws {
         guard state == .active, let task = streamTask else { return }
-        // await 前に状態とタスクを退避して reentrancy を防ぐ
         state = .stopping
         streamTask = nil
+        // 全パス（正常・エラー・早期 return）で確実に idle に戻す
+        defer { state = .idle }
 
         var segments: [TranscriptionSegment] = []
         var firstError: (any Error)?
@@ -80,7 +80,6 @@ public actor InsertTranscriptionUseCase {
             firstError = error
         }
 
-        state = .idle
         if let error = firstError { throw error }
         guard !segments.isEmpty else { return }
         var text = segments.map(\.text).joined(separator: " ")

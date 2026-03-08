@@ -62,6 +62,7 @@ public actor AppendDailyVoiceNoteUseCase {
         guard state == .active, let task = streamTask else { return }
         state = .stopping
         streamTask = nil
+        defer { state = .idle }
 
         var segments: [TranscriptionSegment] = []
         var firstError: (any Error)?
@@ -80,7 +81,6 @@ public actor AppendDailyVoiceNoteUseCase {
             firstError = error
         }
 
-        state = .idle
         if let error = firstError { throw error }
         guard !segments.isEmpty else { return }
         var text = segments.map(\.text).joined(separator: " ")
