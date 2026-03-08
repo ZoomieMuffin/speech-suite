@@ -60,6 +60,8 @@ public actor AppendDailyVoiceNoteUseCase {
             segments = try await streamTask?.value ?? []
         } catch {
             firstError = error
+            streamTask?.cancel()
+            _ = try? await streamTask?.value
         }
         streamTask = nil
         // 録音は必ず停止する
@@ -71,17 +73,13 @@ public actor AppendDailyVoiceNoteUseCase {
         if let processor = textProcessor {
             text = try await processor.process(text)
         }
-        let timestamp = Self.currentTimestamp()
+        let timestamp = currentTimestamp()
         try await sink.write("- [\(timestamp)] \(text)\n")
     }
 
-    private static let timestampFormatter: DateFormatter = {
+    private func currentTimestamp() -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = "HH:mm"
-        return formatter
-    }()
-
-    private static func currentTimestamp() -> String {
-        timestampFormatter.string(from: Date())
+        return formatter.string(from: Date())
     }
 }

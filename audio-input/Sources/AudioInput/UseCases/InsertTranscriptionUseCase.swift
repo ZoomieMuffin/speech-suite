@@ -58,6 +58,8 @@ public actor InsertTranscriptionUseCase {
             segments = try await streamTask?.value ?? []
         } catch {
             firstError = error
+            streamTask?.cancel()
+            _ = try? await streamTask?.value
         }
         streamTask = nil
         // 録音は必ず停止する
