@@ -51,12 +51,19 @@ public actor InsertTranscriptionUseCase {
     /// 録音を停止し、蓄積したセグメントを結合してカーソル位置に挿入する。
     public func stop() async throws {
         // transcription を先に停止して最終セグメントを確定させる
-        try await transcriptionService.stop()
-        // ストリーム終了を待ち、蓄積セグメントを回収
-        let segments = try await streamTask?.value ?? []
+        var segments: [TranscriptionSegment] = []
+        var firstError: (any Error)?
+        do {
+            try await transcriptionService.stop()
+            segments = try await streamTask?.value ?? []
+        } catch {
+            firstError = error
+        }
         streamTask = nil
-        _ = try await recorder.stopRecording()
+        // 録音は必ず停止する
+        _ = try? await recorder.stopRecording()
 
+        if let error = firstError { throw error }
         guard !segments.isEmpty else { return }
         var text = segments.map(\.text).joined()
         if let processor = textProcessor {

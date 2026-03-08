@@ -58,7 +58,8 @@ def analyze_with_copilot(diff: str, github_token: str) -> str:
 {diff}"""
 
     result = subprocess.run(
-        ["copilot", "-p", prompt, "--model", "gpt-5.4", "-s"],
+        ["copilot", "--model", "gpt-5.4", "-s"],
+        input=prompt,
         capture_output=True,
         text=True,
         timeout=300,
