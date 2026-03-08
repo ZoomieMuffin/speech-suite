@@ -57,9 +57,12 @@ def analyze_with_copilot(diff: str, github_token: str) -> str:
 
 {diff}"""
 
+    # Note: -p passes prompt via CLI args (visible in ps). Copilot CLI
+    # does not support --prompt-file or stdin prompt, so this is unavoidable.
+    # GitHub Actions VMs are isolated; self-hosted runners should restrict
+    # process listing access if this is a concern.
     result = subprocess.run(
-        ["copilot", "--model", "gpt-5.4", "-s"],
-        input=prompt,
+        ["copilot", "-p", prompt, "--model", "gpt-5.4", "-s", "--no-auto-update"],
         capture_output=True,
         text=True,
         timeout=300,
