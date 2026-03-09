@@ -216,41 +216,46 @@ private func handleModifierOnly(state: EventTapState, type: CGEventType, event: 
     let isDown = event.flags.contains(deviceFlag)
     if isDown && !state.isKeyDown {
         state.isKeyDown = true
-        state.handler(.pressed)
+        MainActor.assumeIsolated { state.handler(.pressed) }
     } else if !isDown && state.isKeyDown {
         state.isKeyDown = false
-        state.handler(.released)
+        MainActor.assumeIsolated { state.handler(.released) }
     }
 }
 
 /// 通常キーコンボ（Shift+Ctrl+F 等）の処理。
 /// `.keyDown`/`.keyUp` でキーの状態を、`.flagsChanged` で修飾キーの離しを検知する。
-/// 修飾キーは exact match（relevantModifierMask でマスク後に比較）し、
-/// 余分な修飾キーが押されている場合は発火しない。
+///
+/// 起動判定（.keyDown）: exact match で余分な修飾キーでは発火しない。
+/// 継続判定（.flagsChanged）: contains で必須修飾キーが維持されているかだけを見る。
+/// これにより、ホールド中に余分な修飾キーを一瞬足して戻しても .released しない。
 private func handleKeyCombo(state: EventTapState, type: CGEventType, event: CGEvent) {
     let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
 
     switch type {
     case .keyDown:
+        // 起動: exact match（余分な modifier があれば発火しない）
         guard keyCode == state.configuration.keyCode,
             !state.isKeyDown,
             activeModifiers(event.flags) == state.configuration.modifierFlags
         else { return }
         state.isKeyDown = true
-        state.handler(.pressed)
+        MainActor.assumeIsolated { state.handler(.pressed) }
 
     case .keyUp:
         guard keyCode == state.configuration.keyCode, state.isKeyDown else { return }
         state.isKeyDown = false
-        state.handler(.released)
+        MainActor.assumeIsolated { state.handler(.released) }
 
     case .flagsChanged:
-        // コンボ中に修飾キーが離された（または余分なキーが追加された）場合 → released
+        // 継続: 必須修飾キーが全て押されているかを contains で判定。
+        // 余分な修飾キーが追加されても .released せず、
+        // 必須修飾キーが 1 つでも離された場合のみ .released する。
         guard state.isKeyDown,
-            activeModifiers(event.flags) != state.configuration.modifierFlags
+            !activeModifiers(event.flags).contains(state.configuration.modifierFlags)
         else { return }
         state.isKeyDown = false
-        state.handler(.released)
+        MainActor.assumeIsolated { state.handler(.released) }
 
     default:
         break
