@@ -20,6 +20,25 @@ public struct HotkeyConfiguration: Sendable, Equatable, Codable {
         self.isModifierOnly = isModifierOnly
     }
 
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let keyCode = try container.decode(UInt16.self, forKey: .keyCode)
+        let rawValue = try container.decode(UInt64.self, forKey: .modifierFlagsRawValue)
+        let isModifierOnly = try container.decode(Bool.self, forKey: .isModifierOnly)
+        guard !isModifierOnly || KeyCode.modifierKeyCodes.contains(keyCode) else {
+            throw DecodingError.dataCorrupted(
+                .init(
+                    codingPath: container.codingPath,
+                    debugDescription:
+                        "modifier-only configuration requires a modifier key code, got \(keyCode)"
+                )
+            )
+        }
+        self.keyCode = keyCode
+        self.modifierFlagsRawValue = rawValue
+        self.isModifierOnly = isModifierOnly
+    }
+
     /// CGEventFlags に変換する。
     public var modifierFlags: CGEventFlags {
         CGEventFlags(rawValue: modifierFlagsRawValue)

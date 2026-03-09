@@ -30,6 +30,10 @@ public final class HotkeyManager: HotkeyManagerProtocol {
         self.configuration = configuration
     }
 
+    deinit {
+        tapState?.uninstall()
+    }
+
     public func start(handler: @escaping @Sendable (HotkeyEvent) -> Void) async throws {
         // await stop() は suspension point を含むため、再入を防ぐガードを設ける
         guard !isTransitioning else { return }
@@ -154,8 +158,11 @@ private func eventTapCallback(
     }
     let state = Unmanaged<EventTapState>.fromOpaque(userInfo).takeUnretainedValue()
 
-    // システムがタップを無効化した場合は再有効化する
+    // システムがタップを無効化した場合は再有効化する。
+    // 無効化中にイベントを取りこぼした可能性があるため isKeyDown をリセットし、
+    // 次回の pressed/released 判定が反転しないようにする。
     if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+        state.isKeyDown = false
         if let tap = state.eventTap {
             CGEvent.tapEnable(tap: tap, enable: true)
         }

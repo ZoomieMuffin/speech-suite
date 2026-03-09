@@ -138,4 +138,27 @@ struct HotkeyConfigurationTests {
         )
         #expect(config.keyCode == HotkeyConfiguration.KeyCode.ansiF)
     }
+
+    @Test("decoding invalid modifier-only config throws DecodingError")
+    func decodingInvalidModifierOnly() throws {
+        // isModifierOnly=true だが keyCode が通常キー → decode 時にエラー
+        let json = """
+            {"keyCode":3,"modifierFlagsRawValue":524288,"isModifierOnly":true}
+            """
+        let data = Data(json.utf8)
+        #expect(throws: DecodingError.self) {
+            try JSONDecoder().decode(HotkeyConfiguration.self, from: data)
+        }
+    }
+
+    @Test("decoding valid modifier-only config succeeds")
+    func decodingValidModifierOnly() throws {
+        // isModifierOnly=true で keyCode が修飾キー → 正常に decode
+        let json = """
+            {"keyCode":61,"modifierFlagsRawValue":524288,"isModifierOnly":true}
+            """
+        let data = Data(json.utf8)
+        let config = try JSONDecoder().decode(HotkeyConfiguration.self, from: data)
+        #expect(config == HotkeyConfiguration.rightOption)
+    }
 }
