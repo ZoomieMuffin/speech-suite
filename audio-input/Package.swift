@@ -5,7 +5,6 @@ let package = Package(
     name: "AudioInput",
     platforms: [
         .macOS(.v15),
-        .iOS(.v17),
     ],
     dependencies: [
         .package(path: "../speech-core"),
