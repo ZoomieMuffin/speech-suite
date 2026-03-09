@@ -112,4 +112,30 @@ struct HotkeyConfigurationTests {
         #expect(HotkeyConfiguration.KeyCode.rightControl != HotkeyConfiguration.KeyCode.leftControl)
         #expect(HotkeyConfiguration.KeyCode.rightCommand != HotkeyConfiguration.KeyCode.leftCommand)
     }
+
+    // MARK: - Validation
+
+    @Test("modifierKeyCodes contains all 8 modifier keys")
+    func modifierKeyCodesSet() {
+        let codes = HotkeyConfiguration.KeyCode.modifierKeyCodes
+        #expect(codes.count == 8)
+        #expect(codes.contains(HotkeyConfiguration.KeyCode.rightOption))
+        #expect(codes.contains(HotkeyConfiguration.KeyCode.leftOption))
+        #expect(codes.contains(HotkeyConfiguration.KeyCode.rightShift))
+        #expect(codes.contains(HotkeyConfiguration.KeyCode.leftShift))
+        #expect(codes.contains(HotkeyConfiguration.KeyCode.rightControl))
+        #expect(codes.contains(HotkeyConfiguration.KeyCode.leftControl))
+        #expect(codes.contains(HotkeyConfiguration.KeyCode.rightCommand))
+        #expect(codes.contains(HotkeyConfiguration.KeyCode.leftCommand))
+    }
+
+    @Test("non-modifier key is allowed when isModifierOnly is false")
+    func nonModifierKeyAllowed() {
+        let config = HotkeyConfiguration(
+            keyCode: HotkeyConfiguration.KeyCode.ansiF,
+            modifierFlags: .maskCommand,
+            isModifierOnly: false
+        )
+        #expect(config.keyCode == HotkeyConfiguration.KeyCode.ansiF)
+    }
 }

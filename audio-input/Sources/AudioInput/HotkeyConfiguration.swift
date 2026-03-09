@@ -11,6 +11,10 @@ public struct HotkeyConfiguration: Sendable, Equatable, Codable {
     public let isModifierOnly: Bool
 
     public init(keyCode: UInt16, modifierFlags: CGEventFlags, isModifierOnly: Bool) {
+        precondition(
+            !isModifierOnly || KeyCode.modifierKeyCodes.contains(keyCode),
+            "modifier-only configuration requires a modifier key code"
+        )
         self.keyCode = keyCode
         self.modifierFlagsRawValue = modifierFlags.rawValue
         self.isModifierOnly = isModifierOnly
@@ -55,5 +59,13 @@ extension HotkeyConfiguration {
         public static let rightCommand: UInt16 = 0x36  // 54
         public static let leftCommand: UInt16 = 0x37   // 55
         public static let ansiF: UInt16 = 0x03
+
+        /// 全修飾キーコードの集合。isModifierOnly バリデーションに使用。
+        public static let modifierKeyCodes: Set<UInt16> = [
+            rightOption, leftOption,
+            rightShift, leftShift,
+            rightControl, leftControl,
+            rightCommand, leftCommand,
+        ]
     }
 }

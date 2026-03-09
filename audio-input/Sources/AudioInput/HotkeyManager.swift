@@ -24,14 +24,21 @@ public enum HotkeyError: Error, LocalizedError, Sendable {
 public final class HotkeyManager: HotkeyManagerProtocol {
     private let configuration: HotkeyConfiguration
     private var tapState: EventTapState?
+    private var isTransitioning = false
 
     public init(configuration: HotkeyConfiguration = .rightOption) {
         self.configuration = configuration
     }
 
     public func start(handler: @escaping @Sendable (HotkeyEvent) -> Void) async throws {
-        // 既に開始済みなら先に停止
-        if tapState != nil { await stop() }
+        // await stop() は suspension point を含むため、再入を防ぐガードを設ける
+        guard !isTransitioning else { return }
+        isTransitioning = true
+        defer { isTransitioning = false }
+
+        // 既存のタップがあれば先にクリーンアップ
+        tapState?.uninstall()
+        tapState = nil
 
         let state = EventTapState(configuration: configuration, handler: handler)
         try state.install()
@@ -39,6 +46,10 @@ public final class HotkeyManager: HotkeyManagerProtocol {
     }
 
     public func stop() async {
+        guard !isTransitioning else { return }
+        isTransitioning = true
+        defer { isTransitioning = false }
+
         tapState?.uninstall()
         tapState = nil
     }
@@ -47,15 +58,24 @@ public final class HotkeyManager: HotkeyManagerProtocol {
 // MARK: - EventTapState
 
 /// CGEventTap のライフサイクルとコールバック状態を管理する内部クラス。
-/// CGEventTap コールバックは C 関数ポインタのため、
-/// Unmanaged ポインタ経由でアクセスする。
-/// メインランループ上でのみアクセスされるためデータ競合は発生しない。
+///
+/// `@unchecked Sendable` の安全性保証:
+/// - CGEventTap コールバックは `CFRunLoopGetMain()` に追加されるため、
+///   必ずメインスレッドで呼び出される。
+/// - `HotkeyManager` は `@MainActor` なので `install()`/`uninstall()` もメインスレッド上。
+/// - コールバック内で `dispatchPrecondition` により実行時にもメインスレッドを検証する。
+/// - したがって、可変プロパティ `isKeyDown` へのアクセスは常にメインスレッドに限定され、
+///   データ競合は発生しない。
 private final class EventTapState: @unchecked Sendable {
     let configuration: HotkeyConfiguration
     let handler: @Sendable (HotkeyEvent) -> Void
     var eventTap: CFMachPort?
     var runLoopSource: CFRunLoopSource?
     var isKeyDown = false
+
+    /// `install()` 時に `passRetained` で確保した自身への参照。
+    /// `uninstall()` で明示的に `release()` してバランスを取る。
+    private var retainedSelf: Unmanaged<EventTapState>?
 
     init(
         configuration: HotkeyConfiguration,
@@ -72,7 +92,10 @@ private final class EventTapState: @unchecked Sendable {
                 | (1 << CGEventType.keyUp.rawValue)
         }
 
-        let pointer = Unmanaged.passUnretained(self).toOpaque()
+        // passRetained で self を保持し、CGEventTap が生きている間
+        // EventTapState が解放されないことを保証する。
+        let retained = Unmanaged.passRetained(self)
+        let pointer = retained.toOpaque()
 
         guard
             let tap = CGEvent.tapCreate(
@@ -84,9 +107,12 @@ private final class EventTapState: @unchecked Sendable {
                 userInfo: pointer
             )
         else {
+            // タップ作成失敗時は即座に retain を解放
+            retained.release()
             throw HotkeyError.accessibilityPermissionDenied
         }
 
+        self.retainedSelf = retained
         self.eventTap = tap
         let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
         self.runLoopSource = source
@@ -104,19 +130,25 @@ private final class EventTapState: @unchecked Sendable {
         eventTap = nil
         runLoopSource = nil
         isKeyDown = false
+
+        // install() で passRetained した参照を解放する
+        retainedSelf?.release()
+        retainedSelf = nil
     }
 }
 
 // MARK: - CGEventTap Callback
 
 /// CGEventTap のコールバック（C 関数ポインタ）。
-/// メインランループ上で呼び出される。
+/// CFRunLoopGetMain() に追加されるため、メインスレッドで呼び出される。
 private func eventTapCallback(
     _: CGEventTapProxy,
     type: CGEventType,
     event: CGEvent,
     userInfo: UnsafeMutableRawPointer?
 ) -> Unmanaged<CGEvent>? {
+    dispatchPrecondition(condition: .onQueue(.main))
+
     guard let userInfo else {
         return Unmanaged.passUnretained(event)
     }
