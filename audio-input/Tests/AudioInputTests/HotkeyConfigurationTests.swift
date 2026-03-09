@@ -151,14 +151,46 @@ struct HotkeyConfigurationTests {
         }
     }
 
+    @Test("decoding modifier-only with mismatched flag throws DecodingError")
+    func decodingMismatchedFlag() throws {
+        // keyCode=rightOption だが modifierFlags=.maskCommand → 不整合
+        let json = """
+            {"keyCode":61,"modifierFlagsRawValue":1048576,"isModifierOnly":true}
+            """
+        let data = Data(json.utf8)
+        #expect(throws: DecodingError.self) {
+            try JSONDecoder().decode(HotkeyConfiguration.self, from: data)
+        }
+    }
+
     @Test("decoding valid modifier-only config succeeds")
     func decodingValidModifierOnly() throws {
-        // isModifierOnly=true で keyCode が修飾キー → 正常に decode
+        // isModifierOnly=true で keyCode が修飾キー + 正しいフラグ → 正常に decode
         let json = """
             {"keyCode":61,"modifierFlagsRawValue":524288,"isModifierOnly":true}
             """
         let data = Data(json.utf8)
         let config = try JSONDecoder().decode(HotkeyConfiguration.self, from: data)
         #expect(config == HotkeyConfiguration.rightOption)
+    }
+
+    // MARK: - expectedFlag mapping
+
+    @Test("expectedFlag returns correct flag for each modifier pair")
+    func expectedFlagMapping() {
+        typealias KC = HotkeyConfiguration.KeyCode
+        #expect(KC.expectedFlag(for: KC.rightOption) == .maskAlternate)
+        #expect(KC.expectedFlag(for: KC.leftOption) == .maskAlternate)
+        #expect(KC.expectedFlag(for: KC.rightShift) == .maskShift)
+        #expect(KC.expectedFlag(for: KC.leftShift) == .maskShift)
+        #expect(KC.expectedFlag(for: KC.rightControl) == .maskControl)
+        #expect(KC.expectedFlag(for: KC.leftControl) == .maskControl)
+        #expect(KC.expectedFlag(for: KC.rightCommand) == .maskCommand)
+        #expect(KC.expectedFlag(for: KC.leftCommand) == .maskCommand)
+    }
+
+    @Test("expectedFlag returns nil for non-modifier key")
+    func expectedFlagNil() {
+        #expect(HotkeyConfiguration.KeyCode.expectedFlag(for: 0x03) == nil)
     }
 }

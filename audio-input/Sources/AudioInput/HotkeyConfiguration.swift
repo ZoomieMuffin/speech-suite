@@ -11,10 +11,17 @@ public struct HotkeyConfiguration: Sendable, Equatable, Codable {
     public let isModifierOnly: Bool
 
     public init(keyCode: UInt16, modifierFlags: CGEventFlags, isModifierOnly: Bool) {
-        precondition(
-            !isModifierOnly || KeyCode.modifierKeyCodes.contains(keyCode),
-            "modifier-only configuration requires a modifier key code"
-        )
+        if isModifierOnly {
+            guard let expected = KeyCode.expectedFlag(for: keyCode) else {
+                preconditionFailure(
+                    "modifier-only configuration requires a modifier key code, got \(keyCode)"
+                )
+            }
+            precondition(
+                modifierFlags == expected,
+                "modifierFlags (\(modifierFlags.rawValue)) must match the modifier key's flag (\(expected.rawValue))"
+            )
+        }
         self.keyCode = keyCode
         self.modifierFlagsRawValue = modifierFlags.rawValue
         self.isModifierOnly = isModifierOnly
@@ -25,14 +32,25 @@ public struct HotkeyConfiguration: Sendable, Equatable, Codable {
         let keyCode = try container.decode(UInt16.self, forKey: .keyCode)
         let rawValue = try container.decode(UInt64.self, forKey: .modifierFlagsRawValue)
         let isModifierOnly = try container.decode(Bool.self, forKey: .isModifierOnly)
-        guard !isModifierOnly || KeyCode.modifierKeyCodes.contains(keyCode) else {
-            throw DecodingError.dataCorrupted(
-                .init(
-                    codingPath: container.codingPath,
-                    debugDescription:
-                        "modifier-only configuration requires a modifier key code, got \(keyCode)"
+        if isModifierOnly {
+            guard let expected = KeyCode.expectedFlag(for: keyCode) else {
+                throw DecodingError.dataCorrupted(
+                    .init(
+                        codingPath: container.codingPath,
+                        debugDescription:
+                            "modifier-only configuration requires a modifier key code, got \(keyCode)"
+                    )
                 )
-            )
+            }
+            guard CGEventFlags(rawValue: rawValue) == expected else {
+                throw DecodingError.dataCorrupted(
+                    .init(
+                        codingPath: container.codingPath,
+                        debugDescription:
+                            "modifierFlags (\(rawValue)) must match the modifier key's flag (\(expected.rawValue))"
+                    )
+                )
+            }
         }
         self.keyCode = keyCode
         self.modifierFlagsRawValue = rawValue
@@ -86,5 +104,17 @@ extension HotkeyConfiguration {
             rightControl, leftControl,
             rightCommand, leftCommand,
         ]
+
+        /// modifier keyCode に対応する CGEventFlags を返す。
+        /// keyCode と modifierFlags の整合性検証に使用。
+        public static func expectedFlag(for keyCode: UInt16) -> CGEventFlags? {
+            switch keyCode {
+            case rightOption, leftOption: return .maskAlternate
+            case rightShift, leftShift: return .maskShift
+            case rightControl, leftControl: return .maskControl
+            case rightCommand, leftCommand: return .maskCommand
+            default: return nil
+            }
+        }
     }
 }

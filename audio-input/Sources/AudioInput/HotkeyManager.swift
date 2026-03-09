@@ -179,19 +179,23 @@ private func eventTapCallback(
 }
 
 /// modifier-only ホットキーの処理。
-/// `.flagsChanged` イベントのキーコードで右/左を区別し、トグルで pressed/released を判定する。
+/// `.flagsChanged` イベントのキーコードで右/左を区別し、
+/// 実際のフラグ状態から pressed/released を判定する。
+/// トグル方式と異なり、イベント取りこぼし後も状態が反転しない。
 private func handleModifierOnly(state: EventTapState, type: CGEventType, event: CGEvent) {
     guard type == .flagsChanged else { return }
 
     let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
     guard keyCode == state.configuration.keyCode else { return }
 
-    // .flagsChanged はキーごとに press/release で交互に発火する。
-    // キーコードで対象キーを特定済みなのでトグルで判定できる。
-    if !state.isKeyDown {
+    // event.flags は現在の修飾キー全体の状態を表す。
+    // keyCode で対象キーの変更を検知し、flags で押下/離しを判定する。
+    // これにより tapDisabled や監視開始時のズレがあっても自己修復する。
+    let isDown = event.flags.contains(state.configuration.modifierFlags)
+    if isDown && !state.isKeyDown {
         state.isKeyDown = true
         state.handler(.pressed)
-    } else {
+    } else if !isDown && state.isKeyDown {
         state.isKeyDown = false
         state.handler(.released)
     }
