@@ -116,5 +116,22 @@ extension HotkeyConfiguration {
             default: return nil
             }
         }
+
+        /// modifier keyCode に対応する device-specific CGEventFlags を返す。
+        /// IOKit/IOLLEvent.h の NX_DEVICE*KEYMASK 定数。
+        /// 右/左修飾キーを正確に区別するために使用する。
+        public static func deviceFlag(for keyCode: UInt16) -> CGEventFlags? {
+            switch keyCode {
+            case rightOption: return CGEventFlags(rawValue: 0x00000040)   // NX_DEVICERALTKEYMASK
+            case leftOption: return CGEventFlags(rawValue: 0x00000020)    // NX_DEVICELALTKEYMASK
+            case rightShift: return CGEventFlags(rawValue: 0x00000004)    // NX_DEVICERSHIFTKEYMASK
+            case leftShift: return CGEventFlags(rawValue: 0x00000002)     // NX_DEVICELSHIFTKEYMASK
+            case rightControl: return CGEventFlags(rawValue: 0x00002000)  // NX_DEVICERCTLKEYMASK
+            case leftControl: return CGEventFlags(rawValue: 0x00000001)   // NX_DEVICELCTLKEYMASK
+            case rightCommand: return CGEventFlags(rawValue: 0x00000010)  // NX_DEVICERCMDKEYMASK
+            case leftCommand: return CGEventFlags(rawValue: 0x00000008)   // NX_DEVICELCMDKEYMASK
+            default: return nil
+            }
+        }
     }
 }

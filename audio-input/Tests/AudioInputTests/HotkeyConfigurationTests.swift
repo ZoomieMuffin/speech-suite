@@ -193,4 +193,41 @@ struct HotkeyConfigurationTests {
     func expectedFlagNil() {
         #expect(HotkeyConfiguration.KeyCode.expectedFlag(for: 0x03) == nil)
     }
+
+    // MARK: - Device-specific flags
+
+    @Test("deviceFlag returns distinct flags for right and left modifiers")
+    func deviceFlagDistinction() {
+        typealias KC = HotkeyConfiguration.KeyCode
+        // 右と左で異なるフラグが返る
+        #expect(KC.deviceFlag(for: KC.rightOption) != KC.deviceFlag(for: KC.leftOption))
+        #expect(KC.deviceFlag(for: KC.rightShift) != KC.deviceFlag(for: KC.leftShift))
+        #expect(KC.deviceFlag(for: KC.rightControl) != KC.deviceFlag(for: KC.leftControl))
+        #expect(KC.deviceFlag(for: KC.rightCommand) != KC.deviceFlag(for: KC.leftCommand))
+    }
+
+    @Test("deviceFlag returns non-nil for all modifier keys")
+    func deviceFlagNonNil() {
+        for keyCode in HotkeyConfiguration.KeyCode.modifierKeyCodes {
+            #expect(HotkeyConfiguration.KeyCode.deviceFlag(for: keyCode) != nil)
+        }
+    }
+
+    @Test("deviceFlag returns nil for non-modifier key")
+    func deviceFlagNil() {
+        #expect(HotkeyConfiguration.KeyCode.deviceFlag(for: 0x03) == nil)
+    }
+
+    @Test("deviceFlag values match IOKit NX_DEVICE*KEYMASK constants")
+    func deviceFlagValues() {
+        typealias KC = HotkeyConfiguration.KeyCode
+        #expect(KC.deviceFlag(for: KC.rightOption) == CGEventFlags(rawValue: 0x00000040))
+        #expect(KC.deviceFlag(for: KC.leftOption) == CGEventFlags(rawValue: 0x00000020))
+        #expect(KC.deviceFlag(for: KC.rightShift) == CGEventFlags(rawValue: 0x00000004))
+        #expect(KC.deviceFlag(for: KC.leftShift) == CGEventFlags(rawValue: 0x00000002))
+        #expect(KC.deviceFlag(for: KC.rightControl) == CGEventFlags(rawValue: 0x00002000))
+        #expect(KC.deviceFlag(for: KC.leftControl) == CGEventFlags(rawValue: 0x00000001))
+        #expect(KC.deviceFlag(for: KC.rightCommand) == CGEventFlags(rawValue: 0x00000010))
+        #expect(KC.deviceFlag(for: KC.leftCommand) == CGEventFlags(rawValue: 0x00000008))
+    }
 }

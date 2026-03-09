@@ -16,6 +16,19 @@ public enum HotkeyError: Error, LocalizedError, Sendable {
     }
 }
 
+// MARK: - Modifier Mask
+
+/// キーコンボ判定時に使用する修飾キーマスク。
+/// event.flags には caps lock やファンクションキーなど無関係なビットも含まれるため、
+/// 4 種の修飾キーだけを抽出して exact match する。
+private let relevantModifierMask = CGEventFlags(
+    rawValue:
+        CGEventFlags.maskShift.rawValue
+        | CGEventFlags.maskControl.rawValue
+        | CGEventFlags.maskAlternate.rawValue
+        | CGEventFlags.maskCommand.rawValue
+)
+
 // MARK: - HotkeyManager
 
 /// CGEventTap を使ったグローバルホットキー監視の実装。
@@ -67,7 +80,7 @@ public final class HotkeyManager: HotkeyManagerProtocol {
 /// - CGEventTap コールバックは `CFRunLoopGetMain()` に追加されるため、
 ///   必ずメインスレッドで呼び出される。
 /// - `HotkeyManager` は `@MainActor` なので `install()`/`uninstall()` もメインスレッド上。
-/// - コールバック内で `dispatchPrecondition` により実行時にもメインスレッドを検証する。
+/// - コールバック内で `Thread.isMainThread` アサーションにより実行時にもメインスレッドを検証する。
 /// - したがって、可変プロパティ `isKeyDown` へのアクセスは常にメインスレッドに限定され、
 ///   データ競合は発生しない。
 private final class EventTapState: @unchecked Sendable {
@@ -76,6 +89,10 @@ private final class EventTapState: @unchecked Sendable {
     var eventTap: CFMachPort?
     var runLoopSource: CFRunLoopSource?
     var isKeyDown = false
+
+    /// modifier-only 時に右/左を正確に区別するための device-specific フラグ。
+    /// install() 前に keyCode から解決し、コールバック内で毎回計算しないようにする。
+    let deviceFlag: CGEventFlags?
 
     /// `install()` 時に `passRetained` で確保した自身への参照。
     /// `uninstall()` で明示的に `release()` してバランスを取る。
@@ -87,6 +104,9 @@ private final class EventTapState: @unchecked Sendable {
     ) {
         self.configuration = configuration
         self.handler = handler
+        self.deviceFlag = configuration.isModifierOnly
+            ? HotkeyConfiguration.KeyCode.deviceFlag(for: configuration.keyCode)
+            : nil
     }
 
     func install() throws {
@@ -151,7 +171,9 @@ private func eventTapCallback(
     event: CGEvent,
     userInfo: UnsafeMutableRawPointer?
 ) -> Unmanaged<CGEvent>? {
-    dispatchPrecondition(condition: .onQueue(.main))
+    // CFRunLoop コールバックは DispatchQueue.main 経由とは限らないため
+    // dispatchPrecondition ではなく Thread.isMainThread で検証する。
+    assert(Thread.isMainThread, "CGEventTap callback must run on the main thread")
 
     guard let userInfo else {
         return Unmanaged.passUnretained(event)
@@ -179,19 +201,19 @@ private func eventTapCallback(
 }
 
 /// modifier-only ホットキーの処理。
-/// `.flagsChanged` イベントのキーコードで右/左を区別し、
-/// 実際のフラグ状態から pressed/released を判定する。
-/// トグル方式と異なり、イベント取りこぼし後も状態が反転しない。
+/// device-specific フラグ（NX_DEVICE*KEYMASK）で右/左を正確に区別する。
+/// 共有フラグ（.maskAlternate 等）ではなく per-key フラグを使うことで、
+/// 左 Option 押下中に右 Option を離しても正しく .released が発火する。
 private func handleModifierOnly(state: EventTapState, type: CGEventType, event: CGEvent) {
     guard type == .flagsChanged else { return }
 
     let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
     guard keyCode == state.configuration.keyCode else { return }
 
-    // event.flags は現在の修飾キー全体の状態を表す。
-    // keyCode で対象キーの変更を検知し、flags で押下/離しを判定する。
-    // これにより tapDisabled や監視開始時のズレがあっても自己修復する。
-    let isDown = event.flags.contains(state.configuration.modifierFlags)
+    // device-specific フラグで対象キーの押下/離しを判定する。
+    // これにより左右の同種修飾キーの同時押しでも正確に追跡できる。
+    guard let deviceFlag = state.deviceFlag else { return }
+    let isDown = event.flags.contains(deviceFlag)
     if isDown && !state.isKeyDown {
         state.isKeyDown = true
         state.handler(.pressed)
@@ -203,6 +225,8 @@ private func handleModifierOnly(state: EventTapState, type: CGEventType, event: 
 
 /// 通常キーコンボ（Shift+Ctrl+F 等）の処理。
 /// `.keyDown`/`.keyUp` でキーの状態を、`.flagsChanged` で修飾キーの離しを検知する。
+/// 修飾キーは exact match（relevantModifierMask でマスク後に比較）し、
+/// 余分な修飾キーが押されている場合は発火しない。
 private func handleKeyCombo(state: EventTapState, type: CGEventType, event: CGEvent) {
     let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
 
@@ -210,7 +234,7 @@ private func handleKeyCombo(state: EventTapState, type: CGEventType, event: CGEv
     case .keyDown:
         guard keyCode == state.configuration.keyCode,
             !state.isKeyDown,
-            event.flags.contains(state.configuration.modifierFlags)
+            activeModifiers(event.flags) == state.configuration.modifierFlags
         else { return }
         state.isKeyDown = true
         state.handler(.pressed)
@@ -221,9 +245,9 @@ private func handleKeyCombo(state: EventTapState, type: CGEventType, event: CGEv
         state.handler(.released)
 
     case .flagsChanged:
-        // コンボ中に修飾キーが離された場合 → released として扱う
+        // コンボ中に修飾キーが離された（または余分なキーが追加された）場合 → released
         guard state.isKeyDown,
-            !event.flags.contains(state.configuration.modifierFlags)
+            activeModifiers(event.flags) != state.configuration.modifierFlags
         else { return }
         state.isKeyDown = false
         state.handler(.released)
@@ -231,4 +255,9 @@ private func handleKeyCombo(state: EventTapState, type: CGEventType, event: CGEv
     default:
         break
     }
+}
+
+/// event.flags から 4 種の修飾キービットだけを抽出する。
+private func activeModifiers(_ flags: CGEventFlags) -> CGEventFlags {
+    CGEventFlags(rawValue: flags.rawValue & relevantModifierMask.rawValue)
 }
