@@ -16,5 +16,9 @@ let package = Package(
                 .product(name: "SpeechCore", package: "speech-core"),
             ]
         ),
+        .testTarget(
+            name: "AudioInputTests",
+            dependencies: ["AudioInput"]
+        ),
     ]
 )
