@@ -42,12 +42,14 @@ public final class HotkeyManager: HotkeyManagerProtocol {
     deinit {
         // deinit は @MainActor 隔離を継承しないため、スレッドに応じて分岐する。
         // メインスレッド: 同期的に即座にクリーンアップ（通常パス）
-        // 非メインスレッド: main queue にディスパッチしてデータ競合を防ぐ
+        // 非メインスレッド: tap を即時 disable して新規コールバックを遮断し、
+        //   残りのクリーンアップ（CFRunLoopRemoveSource 等）を main queue にディスパッチ
         let state = tapState
         if let state {
             if Thread.isMainThread {
                 state.uninstall()
             } else {
+                state.disableTap()
                 DispatchQueue.main.async { state.uninstall() }
             }
         }
@@ -164,10 +166,16 @@ private final class EventTapState: @unchecked Sendable {
         CGEvent.tapEnable(tap: tap, enable: true)
     }
 
-    func uninstall() {
+    /// CGEventTap を即時無効化する。スレッドセーフ。
+    /// deinit が非メインスレッドで呼ばれた際に、新規コールバックを即座に遮断するために使う。
+    func disableTap() {
         if let tap = eventTap {
             CGEvent.tapEnable(tap: tap, enable: false)
         }
+    }
+
+    func uninstall() {
+        disableTap()
         if let source = runLoopSource {
             CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes)
         }
