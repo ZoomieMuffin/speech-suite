@@ -1,6 +1,7 @@
 import ApplicationServices
 import CoreGraphics
 import Foundation
+import Synchronization
 
 // MARK: - Error
 
@@ -102,6 +103,11 @@ private final class EventTapState: @unchecked Sendable {
     var runLoopSource: CFRunLoopSource?
     var isKeyDown = false
 
+    /// teardown 中を示すアトミックフラグ。スレッドセーフ。
+    /// deinit が非メインスレッドで disableTap() した後、コールバックが割り込んで
+    /// tap を再有効化（tapDisabledByTimeout 等）するのを防ぐ。
+    let isUninstalling = Atomic<Bool>(false)
+
     /// modifier-only 時に右/左を正確に区別するための device-specific フラグ。
     /// install() 前に keyCode から解決し、コールバック内で毎回計算しないようにする。
     let deviceFlag: CGEventFlags?
@@ -168,7 +174,10 @@ private final class EventTapState: @unchecked Sendable {
 
     /// CGEventTap を即時無効化する。スレッドセーフ。
     /// deinit が非メインスレッドで呼ばれた際に、新規コールバックを即座に遮断するために使う。
+    /// isUninstalling フラグを先に立て、インフライトのコールバックが tap を
+    /// 再有効化（tapDisabledByTimeout 等）するのを防ぐ。
     func disableTap() {
+        isUninstalling.store(true, ordering: .releasing)
         if let tap = eventTap {
             CGEvent.tapEnable(tap: tap, enable: false)
         }
@@ -213,6 +222,11 @@ private func eventTapCallback(
         return Unmanaged.passUnretained(event)
     }
     let state = Unmanaged<EventTapState>.fromOpaque(userInfo).takeUnretainedValue()
+
+    // teardown 中はイベント処理・再有効化を一切行わない
+    guard !state.isUninstalling.load(ordering: .acquiring) else {
+        return Unmanaged.passUnretained(event)
+    }
 
     // システムがタップを無効化した場合は再有効化する。
     // 押下中に無効化された場合は .released を通知してから状態をリセットし、
