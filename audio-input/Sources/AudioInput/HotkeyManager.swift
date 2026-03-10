@@ -43,14 +43,15 @@ public final class HotkeyManager: HotkeyManagerProtocol {
     deinit {
         // deinit は @MainActor 隔離を継承しないため、スレッドに応じて分岐する。
         // メインスレッド: 同期的に即座にクリーンアップ（通常パス）
-        // 非メインスレッド: tap を即時 disable して新規コールバックを遮断し、
-        //   残りのクリーンアップ（CFRunLoopRemoveSource 等）を main queue にディスパッチ
+        // 非メインスレッド: isUninstalling フラグでコールバックを抑止し、
+        //   uninstall() を main queue にディスパッチ。
+        //   可変プロパティ（eventTap 等）には触れず @unchecked Sendable の前提を維持する。
         let state = tapState
         if let state {
             if Thread.isMainThread {
                 state.uninstall()
             } else {
-                state.disableTap()
+                state.isUninstalling.store(true, ordering: .releasing)
                 DispatchQueue.main.async { state.uninstall() }
             }
         }
@@ -90,8 +91,10 @@ public final class HotkeyManager: HotkeyManagerProtocol {
 ///   必ずメインスレッドで呼び出される。
 /// - `HotkeyManager` は `@MainActor` なので `install()`/`uninstall()` もメインスレッド上。
 /// - コールバック内で `Thread.isMainThread` アサーションにより実行時にもメインスレッドを検証する。
-/// - したがって、可変プロパティ `isKeyDown` へのアクセスは常にメインスレッドに限定され、
-///   データ競合は発生しない。
+/// - したがって、可変プロパティ（`eventTap`, `isKeyDown` 等）へのアクセスは
+///   常にメインスレッドに限定され、データ競合は発生しない。
+/// - 唯一の例外は `isUninstalling: Atomic<Bool>` で、deinit が非メインスレッドから
+///   store し、コールバックがメインスレッドから load する。Atomic 型のため競合しない。
 ///
 /// handler 呼び出しは `DispatchQueue.main.async` 経由で行う。
 /// CFRunLoop コールバックは Swift 6 的に MainActor executor 上とは限らないため、
@@ -104,8 +107,9 @@ private final class EventTapState: @unchecked Sendable {
     var isKeyDown = false
 
     /// teardown 中を示すアトミックフラグ。スレッドセーフ。
-    /// deinit が非メインスレッドで disableTap() した後、コールバックが割り込んで
-    /// tap を再有効化（tapDisabledByTimeout 等）するのを防ぐ。
+    /// deinit が非メインスレッドから設定し、コールバック（メインスレッド）が参照する。
+    /// true の間はイベント処理・tap 再有効化を一切スキップする。
+    /// 唯一の非メインスレッドアクセスであり、Atomic により競合しない。
     let isUninstalling = Atomic<Bool>(false)
 
     /// modifier-only 時に右/左を正確に区別するための device-specific フラグ。
@@ -172,11 +176,9 @@ private final class EventTapState: @unchecked Sendable {
         CGEvent.tapEnable(tap: tap, enable: true)
     }
 
-    /// CGEventTap を即時無効化する。スレッドセーフ。
-    /// deinit が非メインスレッドで呼ばれた際に、新規コールバックを即座に遮断するために使う。
-    /// isUninstalling フラグを先に立て、インフライトのコールバックが tap を
-    /// 再有効化（tapDisabledByTimeout 等）するのを防ぐ。
-    func disableTap() {
+    /// CGEventTap を無効化する。メインスレッドからのみ呼ぶこと。
+    /// uninstall() の内部ステップとして使用する。
+    private func disableTap() {
         isUninstalling.store(true, ordering: .releasing)
         if let tap = eventTap {
             CGEvent.tapEnable(tap: tap, enable: false)
