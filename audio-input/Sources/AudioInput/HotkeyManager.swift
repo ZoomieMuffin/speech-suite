@@ -40,11 +40,16 @@ public final class HotkeyManager: HotkeyManagerProtocol {
     }
 
     deinit {
-        // deinit は @MainActor 隔離を継承しないため、
-        // 非メインスレッドからの uninstall() によるデータ競合を防ぐ。
+        // deinit は @MainActor 隔離を継承しないため、スレッドに応じて分岐する。
+        // メインスレッド: 同期的に即座にクリーンアップ（通常パス）
+        // 非メインスレッド: main queue にディスパッチしてデータ競合を防ぐ
         let state = tapState
         if let state {
-            DispatchQueue.main.async { state.uninstall() }
+            if Thread.isMainThread {
+                state.uninstall()
+            } else {
+                DispatchQueue.main.async { state.uninstall() }
+            }
         }
     }
 
