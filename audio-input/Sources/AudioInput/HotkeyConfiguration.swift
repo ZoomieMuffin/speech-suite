@@ -52,7 +52,7 @@ public struct HotkeyConfiguration: Sendable, Equatable, Codable {
                     )
                 )
             }
-            guard CGEventFlags(rawValue: rawValue) == expected else {
+            guard Self.normalize(CGEventFlags(rawValue: rawValue)) == expected else {
                 throw DecodingError.dataCorrupted(
                     .init(
                         codingPath: container.codingPath,

@@ -1,6 +1,7 @@
 import ApplicationServices
 import CoreGraphics
 import Foundation
+import Synchronization
 
 // MARK: - Error
 
@@ -40,7 +41,20 @@ public final class HotkeyManager: HotkeyManagerProtocol {
     }
 
     deinit {
-        tapState?.uninstall()
+        // deinit は @MainActor 隔離を継承しないため、スレッドに応じて分岐する。
+        // メインスレッド: 同期的に即座にクリーンアップ（通常パス）
+        // 非メインスレッド: isUninstalling フラグでコールバックを抑止し、
+        //   uninstall() を main queue にディスパッチ。
+        //   可変プロパティ（eventTap 等）には触れず @unchecked Sendable の前提を維持する。
+        let state = tapState
+        if let state {
+            if Thread.isMainThread {
+                state.uninstall()
+            } else {
+                state.isUninstalling.store(true, ordering: .releasing)
+                DispatchQueue.main.async { state.uninstall() }
+            }
+        }
     }
 
     public func start(handler: @escaping @Sendable (HotkeyEvent) -> Void) async throws {
@@ -77,8 +91,10 @@ public final class HotkeyManager: HotkeyManagerProtocol {
 ///   必ずメインスレッドで呼び出される。
 /// - `HotkeyManager` は `@MainActor` なので `install()`/`uninstall()` もメインスレッド上。
 /// - コールバック内で `Thread.isMainThread` アサーションにより実行時にもメインスレッドを検証する。
-/// - したがって、可変プロパティ `isKeyDown` へのアクセスは常にメインスレッドに限定され、
-///   データ競合は発生しない。
+/// - したがって、可変プロパティ（`eventTap`, `isKeyDown` 等）へのアクセスは
+///   常にメインスレッドに限定され、データ競合は発生しない。
+/// - 唯一の例外は `isUninstalling: Atomic<Bool>` で、deinit が非メインスレッドから
+///   store し、コールバックがメインスレッドから load する。Atomic 型のため競合しない。
 ///
 /// handler 呼び出しは `DispatchQueue.main.async` 経由で行う。
 /// CFRunLoop コールバックは Swift 6 的に MainActor executor 上とは限らないため、
@@ -89,6 +105,12 @@ private final class EventTapState: @unchecked Sendable {
     var eventTap: CFMachPort?
     var runLoopSource: CFRunLoopSource?
     var isKeyDown = false
+
+    /// teardown 中を示すアトミックフラグ。スレッドセーフ。
+    /// deinit が非メインスレッドから設定し、コールバック（メインスレッド）が参照する。
+    /// true の間はイベント処理・tap 再有効化を一切スキップする。
+    /// 唯一の非メインスレッドアクセスであり、Atomic により競合しない。
+    let isUninstalling = Atomic<Bool>(false)
 
     /// modifier-only 時に右/左を正確に区別するための device-specific フラグ。
     /// install() 前に keyCode から解決し、コールバック内で毎回計算しないようにする。
@@ -154,10 +176,17 @@ private final class EventTapState: @unchecked Sendable {
         CGEvent.tapEnable(tap: tap, enable: true)
     }
 
-    func uninstall() {
+    /// CGEventTap を無効化する。メインスレッドからのみ呼ぶこと。
+    /// uninstall() の内部ステップとして使用する。
+    private func disableTap() {
+        isUninstalling.store(true, ordering: .releasing)
         if let tap = eventTap {
             CGEvent.tapEnable(tap: tap, enable: false)
         }
+    }
+
+    func uninstall() {
+        disableTap()
         if let source = runLoopSource {
             CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes)
         }
@@ -195,6 +224,11 @@ private func eventTapCallback(
         return Unmanaged.passUnretained(event)
     }
     let state = Unmanaged<EventTapState>.fromOpaque(userInfo).takeUnretainedValue()
+
+    // teardown 中はイベント処理・再有効化を一切行わない
+    guard !state.isUninstalling.load(ordering: .acquiring) else {
+        return Unmanaged.passUnretained(event)
+    }
 
     // システムがタップを無効化した場合は再有効化する。
     // 押下中に無効化された場合は .released を通知してから状態をリセットし、
