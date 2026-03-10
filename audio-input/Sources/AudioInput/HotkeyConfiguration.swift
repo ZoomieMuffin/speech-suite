@@ -11,6 +11,7 @@ public struct HotkeyConfiguration: Sendable, Equatable, Codable {
     public let isModifierOnly: Bool
 
     public init(keyCode: UInt16, modifierFlags: CGEventFlags, isModifierOnly: Bool) {
+        let normalized = Self.normalize(modifierFlags)
         if isModifierOnly {
             guard let expected = KeyCode.expectedFlag(for: keyCode) else {
                 preconditionFailure(
@@ -18,19 +19,21 @@ public struct HotkeyConfiguration: Sendable, Equatable, Codable {
                 )
             }
             precondition(
-                modifierFlags == expected,
+                normalized == expected,
                 "modifierFlags (\(modifierFlags.rawValue)) must match the modifier key's flag (\(expected.rawValue))"
             )
         } else {
-            // キーコンボモードは .keyDown/.keyUp で検知するため、
-            // modifier keyCode では発火しない（modifier は .flagsChanged のみ）。
             precondition(
                 !KeyCode.modifierKeyCodes.contains(keyCode),
                 "key combo configuration must not use a modifier key code (\(keyCode)); use isModifierOnly: true instead"
             )
+            precondition(
+                normalized.rawValue != 0,
+                "key combo configuration requires at least one modifier (Shift/Control/Option/Command)"
+            )
         }
         self.keyCode = keyCode
-        self.modifierFlagsRawValue = modifierFlags.rawValue
+        self.modifierFlagsRawValue = normalized.rawValue
         self.isModifierOnly = isModifierOnly
     }
 
@@ -68,15 +71,42 @@ public struct HotkeyConfiguration: Sendable, Equatable, Codable {
                     )
                 )
             }
+            let normalized = Self.normalize(CGEventFlags(rawValue: rawValue))
+            guard normalized.rawValue != 0 else {
+                throw DecodingError.dataCorrupted(
+                    .init(
+                        codingPath: container.codingPath,
+                        debugDescription:
+                            "key combo configuration requires at least one modifier (Shift/Control/Option/Command)"
+                    )
+                )
+            }
         }
         self.keyCode = keyCode
-        self.modifierFlagsRawValue = rawValue
+        // 正規化して保存（CapsLock/Fn/device bits を除外）
+        self.modifierFlagsRawValue = Self.normalize(CGEventFlags(rawValue: rawValue)).rawValue
         self.isModifierOnly = isModifierOnly
     }
 
     /// CGEventFlags に変換する。
     public var modifierFlags: CGEventFlags {
         CGEventFlags(rawValue: modifierFlagsRawValue)
+    }
+
+    /// Shift/Control/Option/Command の 4 種だけを抽出するマスク。
+    /// CapsLock, Fn, device-specific bits 等を除外し、
+    /// 設定値と event.flags の比較を一貫させる。
+    public static let relevantModifierMask = CGEventFlags(
+        rawValue:
+            CGEventFlags.maskShift.rawValue
+            | CGEventFlags.maskControl.rawValue
+            | CGEventFlags.maskAlternate.rawValue
+            | CGEventFlags.maskCommand.rawValue
+    )
+
+    /// modifierFlags を relevantModifierMask で正規化する。
+    private static func normalize(_ flags: CGEventFlags) -> CGEventFlags {
+        CGEventFlags(rawValue: flags.rawValue & relevantModifierMask.rawValue)
     }
 }
 

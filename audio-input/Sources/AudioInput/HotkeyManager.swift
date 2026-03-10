@@ -16,19 +16,6 @@ public enum HotkeyError: Error, LocalizedError, Sendable {
     }
 }
 
-// MARK: - Modifier Mask
-
-/// キーコンボ判定時に使用する修飾キーマスク。
-/// event.flags には caps lock やファンクションキーなど無関係なビットも含まれるため、
-/// 4 種の修飾キーだけを抽出して exact match する。
-private let relevantModifierMask = CGEventFlags(
-    rawValue:
-        CGEventFlags.maskShift.rawValue
-        | CGEventFlags.maskControl.rawValue
-        | CGEventFlags.maskAlternate.rawValue
-        | CGEventFlags.maskCommand.rawValue
-)
-
 // MARK: - HotkeyManager
 
 /// CGEventTap を使ったグローバルホットキー監視の実装。
@@ -267,5 +254,5 @@ private func handleKeyCombo(state: EventTapState, type: CGEventType, event: CGEv
 
 /// event.flags から 4 種の修飾キービットだけを抽出する。
 private func activeModifiers(_ flags: CGEventFlags) -> CGEventFlags {
-    CGEventFlags(rawValue: flags.rawValue & relevantModifierMask.rawValue)
+    CGEventFlags(rawValue: flags.rawValue & HotkeyConfiguration.relevantModifierMask.rawValue)
 }

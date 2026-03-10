@@ -230,6 +230,45 @@ struct HotkeyConfigurationTests {
         }
     }
 
+    @Test("decoding key combo with empty modifierFlags throws DecodingError")
+    func decodingKeyComboEmptyModifiers() throws {
+        // isModifierOnly=false で modifierFlags が空 → 裸キーを拒否
+        let json = """
+            {"keyCode":3,"modifierFlagsRawValue":0,"isModifierOnly":false}
+            """
+        let data = Data(json.utf8)
+        #expect(throws: DecodingError.self) {
+            try JSONDecoder().decode(HotkeyConfiguration.self, from: data)
+        }
+    }
+
+    // MARK: - Normalization
+
+    @Test("modifierFlags are normalized to strip non-modifier bits")
+    func modifierFlagsNormalized() {
+        // CapsLock (0x10000) + Shift を渡しても、Shift だけが保存される
+        let capsLockBit: UInt64 = 0x10000
+        let shiftBit = CGEventFlags.maskShift.rawValue
+        let config = HotkeyConfiguration(
+            keyCode: HotkeyConfiguration.KeyCode.ansiF,
+            modifierFlags: CGEventFlags(rawValue: capsLockBit | shiftBit),
+            isModifierOnly: false
+        )
+        #expect(config.modifierFlagsRawValue == shiftBit)
+    }
+
+    @Test("decoded modifierFlags are normalized")
+    func decodedModifierFlagsNormalized() throws {
+        let capsLockBit: UInt64 = 0x10000
+        let shiftBit = CGEventFlags.maskShift.rawValue
+        let json = """
+            {"keyCode":3,"modifierFlagsRawValue":\(capsLockBit | shiftBit),"isModifierOnly":false}
+            """
+        let data = Data(json.utf8)
+        let config = try JSONDecoder().decode(HotkeyConfiguration.self, from: data)
+        #expect(config.modifierFlagsRawValue == shiftBit)
+    }
+
     @Test("deviceFlag values match IOKit NX_DEVICE*KEYMASK constants")
     func deviceFlagValues() {
         typealias KC = HotkeyConfiguration.KeyCode
