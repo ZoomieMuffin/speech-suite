@@ -181,10 +181,13 @@ private func eventTapCallback(
     let state = Unmanaged<EventTapState>.fromOpaque(userInfo).takeUnretainedValue()
 
     // システムがタップを無効化した場合は再有効化する。
-    // 無効化中にイベントを取りこぼした可能性があるため isKeyDown をリセットし、
-    // 次回の pressed/released 判定が反転しないようにする。
+    // 押下中に無効化された場合は .released を通知してから状態をリセットし、
+    // 呼び出し側が「押されたまま」で取り残されないようにする。
     if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-        state.isKeyDown = false
+        if state.isKeyDown {
+            state.isKeyDown = false
+            MainActor.assumeIsolated { state.handler(.released) }
+        }
         if let tap = state.eventTap {
             CGEvent.tapEnable(tap: tap, enable: true)
         }

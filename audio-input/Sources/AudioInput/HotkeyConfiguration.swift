@@ -21,6 +21,13 @@ public struct HotkeyConfiguration: Sendable, Equatable, Codable {
                 modifierFlags == expected,
                 "modifierFlags (\(modifierFlags.rawValue)) must match the modifier key's flag (\(expected.rawValue))"
             )
+        } else {
+            // キーコンボモードは .keyDown/.keyUp で検知するため、
+            // modifier keyCode では発火しない（modifier は .flagsChanged のみ）。
+            precondition(
+                !KeyCode.modifierKeyCodes.contains(keyCode),
+                "key combo configuration must not use a modifier key code (\(keyCode)); use isModifierOnly: true instead"
+            )
         }
         self.keyCode = keyCode
         self.modifierFlagsRawValue = modifierFlags.rawValue
@@ -48,6 +55,16 @@ public struct HotkeyConfiguration: Sendable, Equatable, Codable {
                         codingPath: container.codingPath,
                         debugDescription:
                             "modifierFlags (\(rawValue)) must match the modifier key's flag (\(expected.rawValue))"
+                    )
+                )
+            }
+        } else {
+            guard !KeyCode.modifierKeyCodes.contains(keyCode) else {
+                throw DecodingError.dataCorrupted(
+                    .init(
+                        codingPath: container.codingPath,
+                        debugDescription:
+                            "key combo configuration must not use a modifier key code (\(keyCode)); use isModifierOnly: true instead"
                     )
                 )
             }

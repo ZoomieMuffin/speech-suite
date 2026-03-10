@@ -218,6 +218,18 @@ struct HotkeyConfigurationTests {
         #expect(HotkeyConfiguration.KeyCode.deviceFlag(for: 0x03) == nil)
     }
 
+    @Test("decoding key combo with modifier keyCode throws DecodingError")
+    func decodingKeyComboWithModifierKey() throws {
+        // isModifierOnly=false だが keyCode が modifier → 発火しない設定を拒否
+        let json = """
+            {"keyCode":61,"modifierFlagsRawValue":524288,"isModifierOnly":false}
+            """
+        let data = Data(json.utf8)
+        #expect(throws: DecodingError.self) {
+            try JSONDecoder().decode(HotkeyConfiguration.self, from: data)
+        }
+    }
+
     @Test("deviceFlag values match IOKit NX_DEVICE*KEYMASK constants")
     func deviceFlagValues() {
         typealias KC = HotkeyConfiguration.KeyCode
