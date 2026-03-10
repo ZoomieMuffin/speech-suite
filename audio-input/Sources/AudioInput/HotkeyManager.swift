@@ -1,3 +1,4 @@
+import ApplicationServices
 import CoreGraphics
 import Foundation
 
@@ -5,13 +6,21 @@ import Foundation
 
 /// HotkeyManager で発生するエラー。
 public enum HotkeyError: Error, LocalizedError, Sendable {
-    /// CGEventTap の作成に失敗。アクセシビリティ権限が必要。
+    /// アクセシビリティ権限が付与されていない。
     case accessibilityPermissionDenied
+    /// CGEventTap の作成に失敗（権限以外の原因）。
+    case eventTapCreationFailed
+    /// CFRunLoopSource の作成に失敗。
+    case runLoopSourceCreationFailed
 
     public var errorDescription: String? {
         switch self {
         case .accessibilityPermissionDenied:
             return "Accessibility permission is required. Enable it in System Settings > Privacy & Security > Accessibility."
+        case .eventTapCreationFailed:
+            return "Failed to create CGEventTap."
+        case .runLoopSourceCreationFailed:
+            return "Failed to create CFRunLoopSource from CGEventTap."
         }
     }
 }
@@ -70,6 +79,10 @@ public final class HotkeyManager: HotkeyManagerProtocol {
 /// - コールバック内で `Thread.isMainThread` アサーションにより実行時にもメインスレッドを検証する。
 /// - したがって、可変プロパティ `isKeyDown` へのアクセスは常にメインスレッドに限定され、
 ///   データ競合は発生しない。
+///
+/// handler 呼び出しは `DispatchQueue.main.async` 経由で行う。
+/// CFRunLoop コールバックは Swift 6 的に MainActor executor 上とは限らないため、
+/// `MainActor.assumeIsolated` は使用せず、明示的に main queue にディスパッチする。
 private final class EventTapState: @unchecked Sendable {
     let configuration: HotkeyConfiguration
     let handler: @Sendable (HotkeyEvent) -> Void
@@ -118,14 +131,24 @@ private final class EventTapState: @unchecked Sendable {
                 userInfo: pointer
             )
         else {
-            // タップ作成失敗時は即座に retain を解放
             retained.release()
-            throw HotkeyError.accessibilityPermissionDenied
+            // AXIsProcessTrusted() で権限不足を判別
+            if !AXIsProcessTrusted() {
+                throw HotkeyError.accessibilityPermissionDenied
+            }
+            throw HotkeyError.eventTapCreationFailed
+        }
+
+        guard
+            let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
+        else {
+            CGEvent.tapEnable(tap: tap, enable: false)
+            retained.release()
+            throw HotkeyError.runLoopSourceCreationFailed
         }
 
         self.retainedSelf = retained
         self.eventTap = tap
-        let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
         self.runLoopSource = source
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
         CGEvent.tapEnable(tap: tap, enable: true)
@@ -146,6 +169,14 @@ private final class EventTapState: @unchecked Sendable {
         retainedSelf?.release()
         retainedSelf = nil
     }
+
+    /// handler を DispatchQueue.main.async 経由で呼び出す。
+    /// CFRunLoop コールバックは MainActor executor 上とは限らないため、
+    /// 明示的に main queue にディスパッチして MainActor 安全性を保証する。
+    func notify(_ event: HotkeyEvent) {
+        let handler = self.handler
+        DispatchQueue.main.async { handler(event) }
+    }
 }
 
 // MARK: - CGEventTap Callback
@@ -158,8 +189,6 @@ private func eventTapCallback(
     event: CGEvent,
     userInfo: UnsafeMutableRawPointer?
 ) -> Unmanaged<CGEvent>? {
-    // CFRunLoop コールバックは DispatchQueue.main 経由とは限らないため
-    // dispatchPrecondition ではなく Thread.isMainThread で検証する。
     assert(Thread.isMainThread, "CGEventTap callback must run on the main thread")
 
     guard let userInfo else {
@@ -173,7 +202,7 @@ private func eventTapCallback(
     if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
         if state.isKeyDown {
             state.isKeyDown = false
-            MainActor.assumeIsolated { state.handler(.released) }
+            state.notify(.released)
         }
         if let tap = state.eventTap {
             CGEvent.tapEnable(tap: tap, enable: true)
@@ -206,10 +235,10 @@ private func handleModifierOnly(state: EventTapState, type: CGEventType, event: 
     let isDown = event.flags.contains(deviceFlag)
     if isDown && !state.isKeyDown {
         state.isKeyDown = true
-        MainActor.assumeIsolated { state.handler(.pressed) }
+        state.notify(.pressed)
     } else if !isDown && state.isKeyDown {
         state.isKeyDown = false
-        MainActor.assumeIsolated { state.handler(.released) }
+        state.notify(.released)
     }
 }
 
@@ -230,12 +259,12 @@ private func handleKeyCombo(state: EventTapState, type: CGEventType, event: CGEv
             activeModifiers(event.flags) == state.configuration.modifierFlags
         else { return }
         state.isKeyDown = true
-        MainActor.assumeIsolated { state.handler(.pressed) }
+        state.notify(.pressed)
 
     case .keyUp:
         guard keyCode == state.configuration.keyCode, state.isKeyDown else { return }
         state.isKeyDown = false
-        MainActor.assumeIsolated { state.handler(.released) }
+        state.notify(.released)
 
     case .flagsChanged:
         // 継続: 必須修飾キーが全て押されているかを contains で判定。
@@ -245,7 +274,7 @@ private func handleKeyCombo(state: EventTapState, type: CGEventType, event: CGEv
             !activeModifiers(event.flags).contains(state.configuration.modifierFlags)
         else { return }
         state.isKeyDown = false
-        MainActor.assumeIsolated { state.handler(.released) }
+        state.notify(.released)
 
     default:
         break
