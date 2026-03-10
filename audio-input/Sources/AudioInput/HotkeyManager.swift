@@ -40,7 +40,12 @@ public final class HotkeyManager: HotkeyManagerProtocol {
     }
 
     deinit {
-        tapState?.uninstall()
+        // deinit は @MainActor 隔離を継承しないため、
+        // 非メインスレッドからの uninstall() によるデータ競合を防ぐ。
+        let state = tapState
+        if let state {
+            DispatchQueue.main.async { state.uninstall() }
+        }
     }
 
     public func start(handler: @escaping @Sendable (HotkeyEvent) -> Void) async throws {
