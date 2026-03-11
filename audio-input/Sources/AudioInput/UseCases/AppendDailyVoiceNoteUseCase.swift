@@ -20,10 +20,13 @@ public actor AppendDailyVoiceNoteUseCase {
     /// 23:59 に開始して 00:01 に終了しても、録音開始日のファイルに追記される。
     private var sessionDate: Date?
 
-    /// start() の await 中に stop() が来た場合に立てるフラグ。
-    /// state == .active だが streamTask == nil の窓で released が届くと stop() が空振りし
-    /// 録音だけ走り続ける。このフラグで「起動中に stop が来た」を吸収する。
+    /// start() の await 中（state==.active, streamTask==nil）に stop() が来た場合のフラグ。
     private var stopRequested = false
+
+    /// stop() が start() の setup 完了を待つための continuation。
+    /// stop() はここで suspend し、start() のクリーンアップ完了後に resume される。
+    /// これにより activeMode = nil が setup 完了前に起きて別モードが start() するのを防ぐ。
+    private var stopWhileStartingContinuation: CheckedContinuation<Void, Never>?
 
     /// DateFormatter は actor-isolated なインスタンス変数でキャッシュする。
     /// actor が直列アクセスを保証するため、毎呼び出し生成コストを避けつつ thread-safe を維持する。
@@ -53,28 +56,21 @@ public actor AppendDailyVoiceNoteUseCase {
     /// 既に開始済みの場合は SpeechCoreError.alreadyStarted を throw する。
     public func start() async throws {
         guard state == .idle else { throw SpeechCoreError.alreadyStarted }
-        // セッション基準日時を start() 時に確定する。
-        // stop() で Date() を取ると日付境界をまたいだ場合に翌日ファイルへ誤入力される。
         sessionDate = Date()
         state = .active
         stopRequested = false
         do {
             try await recorder.startRecording()
-            // await から戻った時点で stop() が来ていたらクリーンアップして終了する。
             if stopRequested {
                 _ = try? await recorder.stopRecording()
-                state = .idle
-                sessionDate = nil
-                stopRequested = false
+                finishEarlyStop()
                 return
             }
             let stream = try await transcriptionService.start()
             if stopRequested {
                 try? await transcriptionService.stop()
                 _ = try? await recorder.stopRecording()
-                state = .idle
-                sessionDate = nil
-                stopRequested = false
+                finishEarlyStop()
                 return
             }
             streamTask = Task { [hallucinationFilter] in
@@ -95,6 +91,7 @@ public actor AppendDailyVoiceNoteUseCase {
             streamTask = nil
             sessionDate = nil
             stopRequested = false
+            resumeStopContinuation()
             _ = try? await recorder.stopRecording()
             state = .idle
             throw error
@@ -105,10 +102,15 @@ public actor AppendDailyVoiceNoteUseCase {
     /// 保存に失敗した場合はエラーを throw する。
     public func stop() async throws {
         guard state == .active else { return }
-        // start() の await 中（streamTask がまだ nil）に released が来た場合は
-        // フラグだけ立てて戻る。start() 側が await 完了後にチェックしてクリーンアップする。
         guard let task = streamTask else {
+            // start() が await 中（streamTask がまだ nil）。
+            // フラグを立てて start() のクリーンアップ完了まで待機する。
+            // ここで return せず待つことで AppController が activeMode = nil にする前に
+            // recorder / transcriptionService の解放が完了する。
             stopRequested = true
+            await withCheckedContinuation { continuation in
+                stopWhileStartingContinuation = continuation
+            }
             return
         }
         state = .stopping
@@ -143,5 +145,20 @@ public actor AppendDailyVoiceNoteUseCase {
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         let timestamp = timeFormatter.string(from: date)
         try await sink.write("- [\(timestamp)] \(text)\n", date: date)
+    }
+
+    // MARK: - Private helpers
+
+    /// stopRequested によるクリーンアップを完了させ、待機中の stop() を起こす。
+    private func finishEarlyStop() {
+        state = .idle
+        sessionDate = nil
+        stopRequested = false
+        resumeStopContinuation()
+    }
+
+    private func resumeStopContinuation() {
+        stopWhileStartingContinuation?.resume()
+        stopWhileStartingContinuation = nil
     }
 }

@@ -15,10 +15,13 @@ public actor InsertTranscriptionUseCase {
     private var state: State = .idle
     private var streamTask: Task<[TranscriptionSegment], any Error>?
 
-    /// start() の await 中に stop() が来た場合に立てるフラグ。
-    /// state == .active だが streamTask == nil の窓で released が届くと stop() が空振りし
-    /// 録音だけ走り続ける。このフラグで「起動中に stop が来た」を吸収する。
+    /// start() の await 中（state==.active, streamTask==nil）に stop() が来た場合のフラグ。
     private var stopRequested = false
+
+    /// stop() が start() の setup 完了を待つための continuation。
+    /// stop() はここで suspend し、start() のクリーンアップ完了後に resume される。
+    /// これにより activeMode = nil が setup 完了前に起きて別モードが start() するのを防ぐ。
+    private var stopWhileStartingContinuation: CheckedContinuation<Void, Never>?
 
     public init(
         recorder: any AudioRecorderProtocol,
@@ -42,19 +45,16 @@ public actor InsertTranscriptionUseCase {
         stopRequested = false
         do {
             try await recorder.startRecording()
-            // await から戻った時点で stop() が来ていたらクリーンアップして終了する。
             if stopRequested {
                 _ = try? await recorder.stopRecording()
-                state = .idle
-                stopRequested = false
+                finishEarlyStop()
                 return
             }
             let stream = try await transcriptionService.start()
             if stopRequested {
                 try? await transcriptionService.stop()
                 _ = try? await recorder.stopRecording()
-                state = .idle
-                stopRequested = false
+                finishEarlyStop()
                 return
             }
             streamTask = Task { [hallucinationFilter] in
@@ -74,6 +74,7 @@ public actor InsertTranscriptionUseCase {
         } catch {
             streamTask = nil
             stopRequested = false
+            resumeStopContinuation()
             _ = try? await recorder.stopRecording()
             state = .idle
             throw error
@@ -83,15 +84,19 @@ public actor InsertTranscriptionUseCase {
     /// 録音を停止し、蓄積したセグメントを結合してカーソル位置に挿入する。
     public func stop() async throws {
         guard state == .active else { return }
-        // start() の await 中（streamTask がまだ nil）に released が来た場合は
-        // フラグだけ立てて戻る。start() 側が await 完了後にチェックしてクリーンアップする。
         guard let task = streamTask else {
+            // start() が await 中（streamTask がまだ nil）。
+            // フラグを立てて start() のクリーンアップ完了まで待機する。
+            // ここで return せず待つことで AppController が activeMode = nil にする前に
+            // recorder / transcriptionService の解放が完了する。
             stopRequested = true
+            await withCheckedContinuation { continuation in
+                stopWhileStartingContinuation = continuation
+            }
             return
         }
         state = .stopping
         streamTask = nil
-        // 全パス（正常・エラー・早期 return）で確実に idle に戻す
         defer { state = .idle }
 
         var segments: [TranscriptionSegment] = []
@@ -119,5 +124,19 @@ public actor InsertTranscriptionUseCase {
         }
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         try await inserter.insert(text)
+    }
+
+    // MARK: - Private helpers
+
+    /// stopRequested によるクリーンアップを完了させ、待機中の stop() を起こす。
+    private func finishEarlyStop() {
+        state = .idle
+        stopRequested = false
+        resumeStopContinuation()
+    }
+
+    private func resumeStopContinuation() {
+        stopWhileStartingContinuation?.resume()
+        stopWhileStartingContinuation = nil
     }
 }
