@@ -11,6 +11,8 @@ struct AudioInputApp: App {
 
     var body: some Scene {
         MenuBarExtra("AudioInput", systemImage: "mic") {
+            // Scene には .task がないため View 側に付ける。
+            // メニュー初回表示時に発火するが、OS は初回通知送信時にも権限を要求するため実用上問題ない。
             Text("AudioInput")
                 .task {
                     await notificationService.requestAuthorization()

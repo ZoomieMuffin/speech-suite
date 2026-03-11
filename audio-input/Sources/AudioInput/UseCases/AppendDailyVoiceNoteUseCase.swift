@@ -92,13 +92,16 @@ public actor AppendDailyVoiceNoteUseCase {
             text = try await processor.process(text)
         }
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        let timestamp = currentTimestamp()
-        try await sink.write("- [\(timestamp)] \(text)\n")
+        // Date() を一度だけ取得し、タイムスタンプとファイルパスの両方に使う。
+        // 別々に Date() を呼ぶと日付境界で 23:59 のメモが翌日ファイルに入るズレが起きる。
+        let now = Date()
+        let timestamp = format(now)
+        try await sink.write("- [\(timestamp)] \(text)\n", date: now)
     }
 
-    private func currentTimestamp() -> String {
+    private func format(_ date: Date) -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = "HH:mm"
-        return formatter.string(from: Date())
+        return formatter.string(from: date)
     }
 }

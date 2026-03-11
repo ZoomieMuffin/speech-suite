@@ -11,8 +11,8 @@ public struct FileDailyNoteSink: OutputSinkProtocol {
         self.notesDir = notesDir
     }
 
-    public func write(_ text: String) async throws {
-        let fileURL = fileURL(for: Date())
+    public func write(_ text: String, date: Date) async throws {
+        let fileURL = fileURL(for: date)
 
         do {
             try FileManager.default.createDirectory(
@@ -20,7 +20,7 @@ public struct FileDailyNoteSink: OutputSinkProtocol {
                 withIntermediateDirectories: true
             )
         } catch {
-            throw FileDailyNoteSinkError.directoryCreationFailed(notesDir, error)
+            throw FileDailyNoteSinkError.directoryCreationFailed(notesDir, error.localizedDescription)
         }
 
         guard let data = text.data(using: .utf8) else { return }
@@ -35,7 +35,7 @@ public struct FileDailyNoteSink: OutputSinkProtocol {
                 try data.write(to: fileURL, options: .atomic)
             }
         } catch {
-            throw FileDailyNoteSinkError.writeFailed(fileURL, error)
+            throw FileDailyNoteSinkError.writeFailed(fileURL, error.localizedDescription)
         }
     }
 
@@ -49,16 +49,18 @@ public struct FileDailyNoteSink: OutputSinkProtocol {
 }
 
 /// FileDailyNoteSink 固有のエラー。
+/// 関連値に String を使うことで Sendable を自明に満たす。
+/// catch 句で any Error から any Error & Sendable へのキャストが不要になり Swift 6 と整合する。
 public enum FileDailyNoteSinkError: Error, LocalizedError, Sendable {
-    case directoryCreationFailed(URL, any Error)
-    case writeFailed(URL, any Error)
+    case directoryCreationFailed(URL, String)
+    case writeFailed(URL, String)
 
     public var errorDescription: String? {
         switch self {
-        case .directoryCreationFailed(let url, let underlying):
-            return "ディレクトリの作成に失敗しました: \(url.path) — \(underlying.localizedDescription)"
-        case .writeFailed(let url, let underlying):
-            return "ファイルへの書き込みに失敗しました: \(url.path) — \(underlying.localizedDescription)"
+        case .directoryCreationFailed(let url, let description):
+            return "ディレクトリの作成に失敗しました: \(url.path) — \(description)"
+        case .writeFailed(let url, let description):
+            return "ファイルへの書き込みに失敗しました: \(url.path) — \(description)"
         }
     }
 }

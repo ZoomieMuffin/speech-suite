@@ -11,6 +11,12 @@ public final class AppController {
     private let dvnUseCase: AppendDailyVoiceNoteUseCase
     private let notificationService: NotificationService
 
+    /// 現在アクティブなモード。Insert / DVN の同時使用を防ぐ排他制御に使う。
+    /// recorder と transcriptionService は両 UseCase で共有しているため、
+    /// 重ね押しで両方が start() を叩くと競合が発生する。
+    private enum ActiveMode { case insert, dvn }
+    private var activeMode: ActiveMode?
+
     public init(
         settingsStore: SettingsStore,
         notificationService: NotificationService,
@@ -74,24 +80,38 @@ public final class AppController {
     // MARK: - Private
 
     private func handleInsert(_ event: HotkeyEvent) async {
-        do {
-            switch event {
-            case .pressed: try await insertUseCase.start()
-            case .released: try await insertUseCase.stop()
+        switch event {
+        case .pressed:
+            guard activeMode == nil else { return }  // DVN がアクティブなら無視
+            activeMode = .insert
+            do { try await insertUseCase.start() } catch {
+                activeMode = nil
+                notificationService.notifyError(error, context: "テキスト挿入エラー")
             }
-        } catch {
-            notificationService.notifyError(error, context: "テキスト挿入エラー")
+        case .released:
+            guard activeMode == .insert else { return }
+            activeMode = nil
+            do { try await insertUseCase.stop() } catch {
+                notificationService.notifyError(error, context: "テキスト挿入エラー")
+            }
         }
     }
 
     private func handleDVN(_ event: HotkeyEvent) async {
-        do {
-            switch event {
-            case .pressed: try await dvnUseCase.start()
-            case .released: try await dvnUseCase.stop()
+        switch event {
+        case .pressed:
+            guard activeMode == nil else { return }  // Insert がアクティブなら無視
+            activeMode = .dvn
+            do { try await dvnUseCase.start() } catch {
+                activeMode = nil
+                notificationService.notifyError(error, context: "Voice Note 保存エラー")
             }
-        } catch {
-            notificationService.notifyError(error, context: "Voice Note 保存エラー")
+        case .released:
+            guard activeMode == .dvn else { return }
+            activeMode = nil
+            do { try await dvnUseCase.stop() } catch {
+                notificationService.notifyError(error, context: "Voice Note 保存エラー")
+            }
         }
     }
 }
