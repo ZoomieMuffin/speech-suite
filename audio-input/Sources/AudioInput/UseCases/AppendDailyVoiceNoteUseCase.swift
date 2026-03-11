@@ -20,7 +20,13 @@ public actor AppendDailyVoiceNoteUseCase {
     /// 23:59 に開始して 00:01 に終了しても、録音開始日のファイルに追記される。
     private var sessionDate: Date?
 
-    /// DateFormatter は毎回生成コストがかかるため actor-isolated なインスタンス変数でキャッシュする。
+    /// start() の await 中に stop() が来た場合に立てるフラグ。
+    /// state == .active だが streamTask == nil の窓で released が届くと stop() が空振りし
+    /// 録音だけ走り続ける。このフラグで「起動中に stop が来た」を吸収する。
+    private var stopRequested = false
+
+    /// DateFormatter は actor-isolated なインスタンス変数でキャッシュする。
+    /// actor が直列アクセスを保証するため、毎呼び出し生成コストを避けつつ thread-safe を維持する。
     private let timeFormatter: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
@@ -51,9 +57,26 @@ public actor AppendDailyVoiceNoteUseCase {
         // stop() で Date() を取ると日付境界をまたいだ場合に翌日ファイルへ誤入力される。
         sessionDate = Date()
         state = .active
+        stopRequested = false
         do {
             try await recorder.startRecording()
+            // await から戻った時点で stop() が来ていたらクリーンアップして終了する。
+            if stopRequested {
+                _ = try? await recorder.stopRecording()
+                state = .idle
+                sessionDate = nil
+                stopRequested = false
+                return
+            }
             let stream = try await transcriptionService.start()
+            if stopRequested {
+                try? await transcriptionService.stop()
+                _ = try? await recorder.stopRecording()
+                state = .idle
+                sessionDate = nil
+                stopRequested = false
+                return
+            }
             streamTask = Task { [hallucinationFilter] in
                 var segments: [TranscriptionSegment] = []
                 for try await segment in stream {
@@ -71,6 +94,7 @@ public actor AppendDailyVoiceNoteUseCase {
         } catch {
             streamTask = nil
             sessionDate = nil
+            stopRequested = false
             _ = try? await recorder.stopRecording()
             state = .idle
             throw error
@@ -80,10 +104,15 @@ public actor AppendDailyVoiceNoteUseCase {
     /// 録音を停止し、蓄積したセグメントを結合してファイルに追記する。
     /// 保存に失敗した場合はエラーを throw する。
     public func stop() async throws {
-        guard state == .active, let task = streamTask else { return }
+        guard state == .active else { return }
+        // start() の await 中（streamTask がまだ nil）に released が来た場合は
+        // フラグだけ立てて戻る。start() 側が await 完了後にチェックしてクリーンアップする。
+        guard let task = streamTask else {
+            stopRequested = true
+            return
+        }
         state = .stopping
         streamTask = nil
-        // セッション基準日時を取り出す。nil は start() が成功していれば発生しない。
         let date = sessionDate ?? Date()
         sessionDate = nil
         defer { state = .idle }

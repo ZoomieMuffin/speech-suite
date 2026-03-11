@@ -15,6 +15,11 @@ public actor InsertTranscriptionUseCase {
     private var state: State = .idle
     private var streamTask: Task<[TranscriptionSegment], any Error>?
 
+    /// start() の await 中に stop() が来た場合に立てるフラグ。
+    /// state == .active だが streamTask == nil の窓で released が届くと stop() が空振りし
+    /// 録音だけ走り続ける。このフラグで「起動中に stop が来た」を吸収する。
+    private var stopRequested = false
+
     public init(
         recorder: any AudioRecorderProtocol,
         transcriptionService: any TranscriptionService,
@@ -34,9 +39,24 @@ public actor InsertTranscriptionUseCase {
     public func start() async throws {
         guard state == .idle else { throw SpeechCoreError.alreadyStarted }
         state = .active
+        stopRequested = false
         do {
             try await recorder.startRecording()
+            // await から戻った時点で stop() が来ていたらクリーンアップして終了する。
+            if stopRequested {
+                _ = try? await recorder.stopRecording()
+                state = .idle
+                stopRequested = false
+                return
+            }
             let stream = try await transcriptionService.start()
+            if stopRequested {
+                try? await transcriptionService.stop()
+                _ = try? await recorder.stopRecording()
+                state = .idle
+                stopRequested = false
+                return
+            }
             streamTask = Task { [hallucinationFilter] in
                 var segments: [TranscriptionSegment] = []
                 for try await segment in stream {
@@ -53,6 +73,7 @@ public actor InsertTranscriptionUseCase {
             }
         } catch {
             streamTask = nil
+            stopRequested = false
             _ = try? await recorder.stopRecording()
             state = .idle
             throw error
@@ -61,7 +82,13 @@ public actor InsertTranscriptionUseCase {
 
     /// 録音を停止し、蓄積したセグメントを結合してカーソル位置に挿入する。
     public func stop() async throws {
-        guard state == .active, let task = streamTask else { return }
+        guard state == .active else { return }
+        // start() の await 中（streamTask がまだ nil）に released が来た場合は
+        // フラグだけ立てて戻る。start() 側が await 完了後にチェックしてクリーンアップする。
+        guard let task = streamTask else {
+            stopRequested = true
+            return
+        }
         state = .stopping
         streamTask = nil
         // 全パス（正常・エラー・早期 return）で確実に idle に戻す

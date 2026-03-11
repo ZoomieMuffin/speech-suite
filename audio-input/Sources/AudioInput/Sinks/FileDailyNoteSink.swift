@@ -7,15 +7,6 @@ public struct FileDailyNoteSink: OutputSinkProtocol {
     /// Voice Note の保存先ディレクトリ
     public let notesDir: URL
 
-    /// DateFormatter は生成コストが高いため static でキャッシュする。
-    private static let dateFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.calendar = Calendar(identifier: .gregorian)
-        f.dateFormat = "yyyy-MM-dd"
-        return f
-    }()
-
     public init(notesDir: URL) {
         self.notesDir = notesDir
     }
@@ -49,10 +40,14 @@ public struct FileDailyNoteSink: OutputSinkProtocol {
     }
 
     /// 日付から保存先ファイル URL を生成する。形式: YYYY-MM-DD.md
-    /// locale / calendar を en_US_POSIX + Gregorian に固定し、
-    /// 非グレゴリオ暦環境でもファイル名が仕様どおりになることを保証する。
+    /// DateFormatter は Sendable な struct に static で持つと並行呼び出し時に thread-safe でない。
+    /// Calendar.dateComponents で直接年月日を取得して文字列化することで Formatter を排除する。
+    /// Gregorian 固定により非グレゴリオ暦環境でも仕様どおりのファイル名を保証する。
     func fileURL(for date: Date) -> URL {
-        let filename = "\(Self.dateFormatter.string(from: date)).md"
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.locale = Locale(identifier: "en_US_POSIX")
+        let c = calendar.dateComponents([.year, .month, .day], from: date)
+        let filename = String(format: "%04d-%02d-%02d.md", c.year!, c.month!, c.day!)
         return notesDir.appendingPathComponent(filename)
     }
 }
