@@ -62,8 +62,7 @@ public final class AppController {
 
         do {
             try await insertManager.start { [weak self] event in
-                guard let self else { return }
-                Task { @MainActor in await self.handleInsert(event) }
+                await self?.handleInsert(event)
             }
         } catch {
             notificationService.notifyError(error, context: "Insert ホットキー")
@@ -71,8 +70,7 @@ public final class AppController {
 
         do {
             try await dvnManager.start { [weak self] event in
-                guard let self else { return }
-                Task { @MainActor in await self.handleDVN(event) }
+                await self?.handleDVN(event)
             }
         } catch {
             notificationService.notifyError(error, context: "Voice Note ホットキー")

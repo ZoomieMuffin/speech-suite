@@ -57,7 +57,7 @@ public final class HotkeyManager: HotkeyManagerProtocol {
         }
     }
 
-    public func start(handler: @escaping @Sendable (HotkeyEvent) -> Void) async throws {
+    public func start(handler: @escaping @MainActor (HotkeyEvent) async -> Void) async throws {
         // await stop() は suspension point を含むため、再入を防ぐガードを設ける
         guard !isTransitioning else { return }
         isTransitioning = true
@@ -101,7 +101,7 @@ public final class HotkeyManager: HotkeyManagerProtocol {
 /// `MainActor.assumeIsolated` は使用せず、明示的に main queue にディスパッチする。
 private final class EventTapState: @unchecked Sendable {
     let configuration: HotkeyConfiguration
-    let handler: @Sendable (HotkeyEvent) -> Void
+    let handler: @MainActor (HotkeyEvent) async -> Void
     var eventTap: CFMachPort?
     var runLoopSource: CFRunLoopSource?
     var isKeyDown = false
@@ -122,7 +122,7 @@ private final class EventTapState: @unchecked Sendable {
 
     init(
         configuration: HotkeyConfiguration,
-        handler: @escaping @Sendable (HotkeyEvent) -> Void
+        handler: @escaping @MainActor (HotkeyEvent) async -> Void
     ) {
         self.configuration = configuration
         self.handler = handler
@@ -199,12 +199,13 @@ private final class EventTapState: @unchecked Sendable {
         retainedSelf = nil
     }
 
-    /// handler を DispatchQueue.main.async 経由で呼び出す。
+    /// handler を MainActor 上で呼び出す。
     /// CFRunLoop コールバックは MainActor executor 上とは限らないため、
-    /// 明示的に main queue にディスパッチして MainActor 安全性を保証する。
+    /// Task { @MainActor } で非同期にディスパッチして MainActor 安全性を保証する。
+    /// handler は @MainActor async なので AppController 側に Task ラップは不要。
     func notify(_ event: HotkeyEvent) {
         let handler = self.handler
-        DispatchQueue.main.async { handler(event) }
+        Task { @MainActor in await handler(event) }
     }
 }
 
