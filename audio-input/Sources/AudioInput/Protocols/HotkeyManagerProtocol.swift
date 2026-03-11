@@ -12,7 +12,8 @@ public enum HotkeyEvent: Sendable {
 @MainActor
 public protocol HotkeyManagerProtocol: Sendable {
     /// ホットキー監視を開始する。イベントは handler 経由で通知。
-    func start(handler: @escaping @Sendable (HotkeyEvent) -> Void) async throws
+    /// handler は MainActor 上で呼び出されることを保証する。
+    func start(handler: @escaping @MainActor (HotkeyEvent) async -> Void) async throws
     /// ホットキー監視を停止する。
     func stop() async
 }

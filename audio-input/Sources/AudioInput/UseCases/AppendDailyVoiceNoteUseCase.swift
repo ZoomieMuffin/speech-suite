@@ -9,47 +9,89 @@ public actor AppendDailyVoiceNoteUseCase {
     private let transcriptionService: any TranscriptionService
     private let textProcessor: (any TextProcessorProtocol)?
     private let sink: any OutputSinkProtocol
-    private let hallucinationFilter: HallucinationFilter
+    /// nil の場合はフィルタリングをスキップする（fillerFilterEnabled: false に対応）。
+    private let hallucinationFilter: HallucinationFilter?
 
     private enum State { case idle, active, stopping }
     private var state: State = .idle
     private var streamTask: Task<[TranscriptionSegment], any Error>?
+
+    /// セッション開始日時。start() 時に確定し stop() のタイムスタンプ・ファイルパスに使う。
+    /// 23:59 に開始して 00:01 に終了しても、録音開始日のファイルに追記される。
+    private var sessionDate: Date?
+
+    /// start() の await 中（state==.active, streamTask==nil）に stop() が来た場合のフラグ。
+    private var stopRequested = false
+
+    /// stop() が start() の setup 完了を待つための continuation。
+    /// stop() はここで suspend し、start() のクリーンアップ完了後に resume される。
+    /// これにより activeMode = nil が setup 完了前に起きて別モードが start() するのを防ぐ。
+    private var stopWhileStartingContinuation: CheckedContinuation<Void, Never>?
+
+    /// DateFormatter は actor-isolated なインスタンス変数でキャッシュする。
+    /// actor が直列アクセスを保証するため、毎呼び出し生成コストを避けつつ thread-safe を維持する。
+    private let timeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.calendar = Calendar(identifier: .gregorian)
+        f.dateFormat = "HH:mm"
+        return f
+    }()
 
     public init(
         recorder: any AudioRecorderProtocol,
         transcriptionService: any TranscriptionService,
         textProcessor: (any TextProcessorProtocol)? = nil,
         sink: any OutputSinkProtocol,
-        hallucinationFilter: HallucinationFilter? = nil
-    ) throws {
+        hallucinationFilter: HallucinationFilter? = HallucinationFilter.default
+    ) {
         self.recorder = recorder
         self.transcriptionService = transcriptionService
         self.textProcessor = textProcessor
         self.sink = sink
-        self.hallucinationFilter = try hallucinationFilter ?? HallucinationFilter()
+        self.hallucinationFilter = hallucinationFilter
     }
 
     /// 録音を開始し、セグメントの蓄積を始める。
     /// 既に開始済みの場合は SpeechCoreError.alreadyStarted を throw する。
     public func start() async throws {
         guard state == .idle else { throw SpeechCoreError.alreadyStarted }
+        sessionDate = Date()
         state = .active
+        stopRequested = false
         do {
             try await recorder.startRecording()
+            if stopRequested {
+                _ = try? await recorder.stopRecording()
+                finishEarlyStop()
+                return
+            }
             let stream = try await transcriptionService.start()
+            if stopRequested {
+                try? await transcriptionService.stop()
+                _ = try? await recorder.stopRecording()
+                finishEarlyStop()
+                return
+            }
             streamTask = Task { [hallucinationFilter] in
                 var segments: [TranscriptionSegment] = []
                 for try await segment in stream {
                     try Task.checkCancellation()
-                    let filtered = hallucinationFilter.filter([segment])
-                    if let seg = filtered.first {
-                        segments.append(seg)
+                    if let filter = hallucinationFilter {
+                        if let seg = filter.filter([segment]).first {
+                            segments.append(seg)
+                        }
+                    } else {
+                        segments.append(segment)
                     }
                 }
                 return segments
             }
         } catch {
             streamTask = nil
+            sessionDate = nil
+            stopRequested = false
+            resumeStopContinuation()
             _ = try? await recorder.stopRecording()
             state = .idle
             throw error
@@ -59,9 +101,22 @@ public actor AppendDailyVoiceNoteUseCase {
     /// 録音を停止し、蓄積したセグメントを結合してファイルに追記する。
     /// 保存に失敗した場合はエラーを throw する。
     public func stop() async throws {
-        guard state == .active, let task = streamTask else { return }
+        guard state == .active else { return }
+        guard let task = streamTask else {
+            // start() が await 中（streamTask がまだ nil）。
+            // フラグを立てて start() のクリーンアップ完了まで待機する。
+            // ここで return せず待つことで AppController が activeMode = nil にする前に
+            // recorder / transcriptionService の解放が完了する。
+            stopRequested = true
+            await withCheckedContinuation { continuation in
+                stopWhileStartingContinuation = continuation
+            }
+            return
+        }
         state = .stopping
         streamTask = nil
+        let date = sessionDate ?? Date()
+        sessionDate = nil
         defer { state = .idle }
 
         var segments: [TranscriptionSegment] = []
@@ -88,13 +143,22 @@ public actor AppendDailyVoiceNoteUseCase {
             text = try await processor.process(text)
         }
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        let timestamp = currentTimestamp()
-        try await sink.write("- [\(timestamp)] \(text)\n")
+        let timestamp = timeFormatter.string(from: date)
+        try await sink.write("- [\(timestamp)] \(text)\n", date: date)
     }
 
-    private func currentTimestamp() -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm"
-        return formatter.string(from: Date())
+    // MARK: - Private helpers
+
+    /// stopRequested によるクリーンアップを完了させ、待機中の stop() を起こす。
+    private func finishEarlyStop() {
+        state = .idle
+        sessionDate = nil
+        stopRequested = false
+        resumeStopContinuation()
+    }
+
+    private func resumeStopContinuation() {
+        stopWhileStartingContinuation?.resume()
+        stopWhileStartingContinuation = nil
     }
 }
