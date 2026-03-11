@@ -46,20 +46,25 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          JOB_STATUS: ${{ job.status }}
+          REPOSITORY: ${{ github.repository }}
+          HEAD_REF: ${{ github.head_ref }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
         run: |
           if [ -z "${TELEGRAM_BOT_TOKEN}" ] || [ -z "${TELEGRAM_CHAT_ID}" ]; then
             echo "Telegram secrets not configured, skipping notification."
             exit 0
           fi
-          if [ "${{ job.status }}" = "success" ]; then
+          if [ "${JOB_STATUS}" = "success" ]; then
             STATUS="✅ Success"
           else
             STATUS="❌ Failed"
           fi
-          TEXT="${STATUS} PR Review: ${{ github.repository }}
-          Branch: ${{ github.head_ref }}
-          PR: ${{ github.event.pull_request.title }}
-          ${{ github.event.pull_request.html_url }}"
+          TEXT="${STATUS} PR Review: ${REPOSITORY}
+Branch: ${HEAD_REF}
+PR: ${PR_TITLE}
+${PR_URL}"
           curl -s --fail -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
             -d chat_id="${TELEGRAM_CHAT_ID}" \
             --data-urlencode "text=${TEXT}"

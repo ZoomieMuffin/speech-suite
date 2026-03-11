@@ -1,10 +1,12 @@
 import Foundation
+import OSLog
 import UserNotifications
 
 /// エラー発生時にシステム通知を表示するサービス。
 @MainActor
 public final class NotificationService {
     private var isAuthorized = false
+    private let logger = Logger(subsystem: "com.speech-suite.audio-input", category: "NotificationService")
 
     public init() {}
 
@@ -13,8 +15,13 @@ public final class NotificationService {
         do {
             isAuthorized = try await UNUserNotificationCenter.current()
                 .requestAuthorization(options: [.alert, .sound])
+            if !isAuthorized {
+                // ユーザーが権限を拒否した場合。保存失敗等のエラーが通知できなくなる。
+                logger.warning("Notification authorization denied by user — error notifications will be suppressed.")
+            }
         } catch {
             isAuthorized = false
+            logger.error("Notification authorization request failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -23,7 +30,10 @@ public final class NotificationService {
     ///   - error: 表示するエラー
     ///   - context: 通知タイトル（例: "Voice Note 保存エラー"）
     public func notifyError(_ error: any Error, context: String) {
-        guard isAuthorized else { return }
+        guard isAuthorized else {
+            logger.warning("Cannot deliver notification (not authorized) — context: \(context, privacy: .public), error: \(error.localizedDescription, privacy: .public)")
+            return
+        }
         let content = UNMutableNotificationContent()
         content.title = context
         content.body = error.localizedDescription
@@ -33,11 +43,11 @@ public final class NotificationService {
             content: content,
             trigger: nil
         )
-        UNUserNotificationCenter.current().add(request) { error in
-            // 通知配信失敗を通知で伝えることはできないためサイレントにする。
-            // デバッグビルドではアサーションで検出する。
-            if let error {
-                assertionFailure("NotificationService: failed to schedule notification: \(error)")
+        UNUserNotificationCenter.current().add(request) { [logger] deliveryError in
+            // 通知配信失敗を通知で伝えることはできないため、システムログに記録する。
+            if let deliveryError {
+                logger.error("Failed to schedule notification — context: \(context, privacy: .public), error: \(deliveryError.localizedDescription, privacy: .public)")
+                assertionFailure("NotificationService: failed to schedule notification: \(deliveryError)")
             }
         }
     }
