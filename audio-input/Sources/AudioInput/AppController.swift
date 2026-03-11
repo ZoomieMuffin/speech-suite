@@ -90,10 +90,13 @@ public final class AppController {
             }
         case .released:
             guard activeMode == .insert else { return }
-            activeMode = nil
+            // activeMode は stop() 完了後にクリアする。
+            // 先にクリアすると stop() の await 中に別モードの pressed が通り、
+            // recorder / transcriptionService が stop() と start() で競合する。
             do { try await insertUseCase.stop() } catch {
                 notificationService.notifyError(error, context: "テキスト挿入エラー")
             }
+            activeMode = nil
         }
     }
 
@@ -108,10 +111,10 @@ public final class AppController {
             }
         case .released:
             guard activeMode == .dvn else { return }
-            activeMode = nil
             do { try await dvnUseCase.stop() } catch {
                 notificationService.notifyError(error, context: "Voice Note 保存エラー")
             }
+            activeMode = nil
         }
     }
 }

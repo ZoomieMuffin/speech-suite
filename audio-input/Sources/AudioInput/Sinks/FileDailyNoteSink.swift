@@ -40,8 +40,12 @@ public struct FileDailyNoteSink: OutputSinkProtocol {
     }
 
     /// 日付から保存先ファイル URL を生成する。形式: YYYY-MM-DD.md
+    /// locale / calendar を en_US_POSIX + Gregorian に固定し、
+    /// 非グレゴリオ暦環境でもファイル名が仕様どおりになることを保証する。
     func fileURL(for date: Date) -> URL {
         let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.calendar = Calendar(identifier: .gregorian)
         formatter.dateFormat = "yyyy-MM-dd"
         let filename = "\(formatter.string(from: date)).md"
         return notesDir.appendingPathComponent(filename)
