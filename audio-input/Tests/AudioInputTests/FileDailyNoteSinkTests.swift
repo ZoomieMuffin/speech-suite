@@ -26,7 +26,7 @@ import Testing
     try await sink.write("- [10:00] 一行目\n", date: now)
     try await sink.write("- [10:01] 二行目\n", date: now)
 
-    let fileURL = sink.fileURL(for: now)
+    let fileURL = try sink.fileURL(for: now)
     let content = try String(contentsOf: fileURL, encoding: .utf8)
     #expect(content == "- [10:00] 一行目\n- [10:01] 二行目\n")
 }
@@ -46,7 +46,7 @@ import Testing
     #expect(FileManager.default.fileExists(atPath: dir.path))
 }
 
-@Test func fileDailyNoteSinkFileNameFormat() {
+@Test func fileDailyNoteSinkFileNameFormat() throws {
     let dir = FileManager.default.temporaryDirectory
     let sink = FileDailyNoteSink(notesDir: dir)
 
@@ -55,7 +55,7 @@ import Testing
     comps.month = 3
     comps.day = 11
     let date = Calendar.current.date(from: comps)!
-    let url = sink.fileURL(for: date)
+    let url = try sink.fileURL(for: date)
     #expect(url.lastPathComponent == "2026-03-11.md")
 }
 
