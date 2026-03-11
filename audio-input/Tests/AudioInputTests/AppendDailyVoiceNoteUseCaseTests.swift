@@ -18,7 +18,7 @@ private actor StubTranscriptionService: TranscriptionService {
 
     init(segments: [TranscriptionSegment]) { self.segments = segments }
 
-    func start() throws(SpeechCoreError) -> AsyncThrowingStream<TranscriptionSegment, SpeechCoreError> {
+    func start() throws(SpeechCoreError) -> AsyncThrowingStream<TranscriptionSegment, any Error> {
         let segments = self.segments
         return AsyncThrowingStream { continuation in
             for segment in segments { continuation.yield(segment) }

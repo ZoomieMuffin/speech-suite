@@ -7,6 +7,15 @@ public struct FileDailyNoteSink: OutputSinkProtocol {
     /// Voice Note の保存先ディレクトリ
     public let notesDir: URL
 
+    /// DateFormatter は生成コストが高いため static でキャッシュする。
+    private static let dateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.calendar = Calendar(identifier: .gregorian)
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
+
     public init(notesDir: URL) {
         self.notesDir = notesDir
     }
@@ -43,11 +52,7 @@ public struct FileDailyNoteSink: OutputSinkProtocol {
     /// locale / calendar を en_US_POSIX + Gregorian に固定し、
     /// 非グレゴリオ暦環境でもファイル名が仕様どおりになることを保証する。
     func fileURL(for date: Date) -> URL {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.dateFormat = "yyyy-MM-dd"
-        let filename = "\(formatter.string(from: date)).md"
+        let filename = "\(Self.dateFormatter.string(from: date)).md"
         return notesDir.appendingPathComponent(filename)
     }
 }

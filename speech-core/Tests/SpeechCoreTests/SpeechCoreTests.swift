@@ -443,11 +443,12 @@ private actor MockService: TranscriptionService {
         self.isAvailable = isAvailable
     }
 
-    func start() throws(SpeechCoreError) -> AsyncThrowingStream<TranscriptionSegment, SpeechCoreError> {
+    func start() throws(SpeechCoreError) -> AsyncThrowingStream<TranscriptionSegment, any Error> {
         fatalError("Not used in registry tests")
     }
 
     func stop() async throws(SpeechCoreError) {}
+
 }
 
 @Test func registryReturnsRegisteredService() async {
