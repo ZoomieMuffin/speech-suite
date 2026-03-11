@@ -23,7 +23,11 @@ public struct FileDailyNoteSink: OutputSinkProtocol {
             throw FileDailyNoteSinkError.directoryCreationFailed(notesDir, error.localizedDescription)
         }
 
-        guard let data = text.data(using: .utf8) else { return }
+        // Swift の String は内部的に Unicode なので UTF-8 エンコードが nil になることは
+        // 実用上ありえないが、黙って return するとメモが無言で消えるため throw する。
+        guard let data = text.data(using: .utf8) else {
+            throw FileDailyNoteSinkError.encodingFailed(fileURL)
+        }
 
         do {
             if FileManager.default.fileExists(atPath: fileURL.path) {
@@ -58,6 +62,7 @@ public struct FileDailyNoteSink: OutputSinkProtocol {
 public enum FileDailyNoteSinkError: Error, LocalizedError, Sendable {
     case directoryCreationFailed(URL, String)
     case writeFailed(URL, String)
+    case encodingFailed(URL)
 
     public var errorDescription: String? {
         switch self {
@@ -65,6 +70,8 @@ public enum FileDailyNoteSinkError: Error, LocalizedError, Sendable {
             return "ディレクトリの作成に失敗しました: \(url.path) — \(description)"
         case .writeFailed(let url, let description):
             return "ファイルへの書き込みに失敗しました: \(url.path) — \(description)"
+        case .encodingFailed(let url):
+            return "テキストの UTF-8 エンコードに失敗しました: \(url.path)"
         }
     }
 }

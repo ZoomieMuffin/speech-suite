@@ -13,10 +13,17 @@ public final class SettingsStore {
     public private(set) var settings: AppSettings
 
     public init() {
-        if let data = UserDefaults.standard.data(forKey: Self.userDefaultsKey),
-            let decoded = try? JSONDecoder().decode(AppSettings.self, from: data)
-        {
-            self.settings = decoded
+        if let data = UserDefaults.standard.data(forKey: Self.userDefaultsKey) {
+            if let decoded = try? JSONDecoder().decode(AppSettings.self, from: data) {
+                self.settings = decoded
+            } else {
+                // JSON 不整合または schema 変更により復元に失敗。デフォルト値で起動する。
+                // ホットキーや保存先が静かに失われるリスクがあるため、デバッグビルドで検出する。
+                assertionFailure(
+                    "SettingsStore: failed to decode AppSettings from UserDefaults. Starting with defaults."
+                )
+                self.settings = AppSettings()
+            }
         } else {
             self.settings = AppSettings()
         }
