@@ -12,7 +12,7 @@ public struct FileDailyNoteSink: OutputSinkProtocol {
     }
 
     public func write(_ text: String, date: Date) async throws {
-        let fileURL = fileURL(for: date)
+        let fileURL = try fileURL(for: date)
 
         do {
             try FileManager.default.createDirectory(
@@ -47,11 +47,14 @@ public struct FileDailyNoteSink: OutputSinkProtocol {
     /// DateFormatter は Sendable な struct に static で持つと並行呼び出し時に thread-safe でない。
     /// Calendar.dateComponents で直接年月日を取得して文字列化することで Formatter を排除する。
     /// Gregorian 固定により非グレゴリオ暦環境でも仕様どおりのファイル名を保証する。
-    func fileURL(for date: Date) -> URL {
+    func fileURL(for date: Date) throws -> URL {
         var calendar = Calendar(identifier: .gregorian)
         calendar.locale = Locale(identifier: "en_US_POSIX")
         let c = calendar.dateComponents([.year, .month, .day], from: date)
-        let filename = String(format: "%04d-%02d-%02d.md", c.year!, c.month!, c.day!)
+        guard let year = c.year, let month = c.month, let day = c.day else {
+            throw FileDailyNoteSinkError.dateComponentsFailed(date)
+        }
+        let filename = String(format: "%04d-%02d-%02d.md", year, month, day)
         return notesDir.appendingPathComponent(filename)
     }
 }
@@ -63,6 +66,7 @@ public enum FileDailyNoteSinkError: Error, LocalizedError, Sendable {
     case directoryCreationFailed(URL, String)
     case writeFailed(URL, String)
     case encodingFailed(URL)
+    case dateComponentsFailed(Date)
 
     public var errorDescription: String? {
         switch self {
@@ -72,6 +76,8 @@ public enum FileDailyNoteSinkError: Error, LocalizedError, Sendable {
             return "ファイルへの書き込みに失敗しました: \(url.path) — \(description)"
         case .encodingFailed(let url):
             return "テキストの UTF-8 エンコードに失敗しました: \(url.path)"
+        case .dateComponentsFailed(let date):
+            return "日付コンポーネントの取得に失敗しました: \(date)"
         }
     }
 }
