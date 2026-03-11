@@ -383,6 +383,55 @@ import Testing
     #expect(result[0].text == "Good morning everyone")
 }
 
+// MARK: - HallucinationFilter (custom patterns)
+
+@Test func filterCustomPatternIsRemoved() throws {
+    let seg = try TranscriptionSegment(text: "えーと", startTime: 0.0, endTime: 2.0)
+    let filter = try HallucinationFilter(customPatterns: ["えーと"])
+    let result = filter.filter([seg])
+    #expect(result.isEmpty, "ユーザー定義パターンは除去される")
+}
+
+@Test func filterCustomPatternCaseInsensitive() throws {
+    let seg = try TranscriptionSegment(text: "FILLER WORD", startTime: 0.0, endTime: 2.0)
+    let filter = try HallucinationFilter(customPatterns: ["filler word"])
+    let result = filter.filter([seg])
+    #expect(result.isEmpty, "カスタムパターンは大文字小文字を無視する")
+}
+
+@Test func filterCustomPatternDoesNotAffectNormalText() throws {
+    let seg = try TranscriptionSegment(text: "今日の天気は晴れ", startTime: 0.0, endTime: 2.0)
+    let filter = try HallucinationFilter(customPatterns: ["えーと"])
+    let result = filter.filter([seg])
+    #expect(result.count == 1, "カスタムパターン以外の通常テキストは通過する")
+}
+
+@Test func filterCustomPatternCoexistsWithBuiltIn() throws {
+    let segments = try [
+        TranscriptionSegment(text: "えーと", startTime: 0.0, endTime: 2.0),        // custom
+        TranscriptionSegment(text: "Thank you for watching", startTime: 2.0, endTime: 5.0), // built-in
+        TranscriptionSegment(text: "今日のミーティング", startTime: 5.0, endTime: 8.0),        // keep
+    ]
+    let filter = try HallucinationFilter(customPatterns: ["えーと"])
+    let result = filter.filter(segments)
+    #expect(result.count == 1)
+    #expect(result[0].text == "今日のミーティング")
+}
+
+@Test func filterEmptyCustomPatterns() throws {
+    let seg = try TranscriptionSegment(text: "えーと", startTime: 0.0, endTime: 2.0)
+    let filter = try HallucinationFilter(customPatterns: [])
+    let result = filter.filter([seg])
+    #expect(result.count == 1, "空のカスタムパターンは何も除去しない")
+}
+
+@Test func filterCustomPatternWithPunctuation() throws {
+    let seg = try TranscriptionSegment(text: "えーと！", startTime: 0.0, endTime: 2.0)
+    let filter = try HallucinationFilter(customPatterns: ["えーと"])
+    let result = filter.filter([seg])
+    #expect(result.isEmpty, "句読点付きでもカスタムパターンにマッチする")
+}
+
 // MARK: - TranscriberRegistry
 
 private actor MockService: TranscriptionService {

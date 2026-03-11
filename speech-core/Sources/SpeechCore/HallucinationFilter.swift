@@ -6,8 +6,15 @@ public struct HallucinationFilter: Sendable {
     /// この秒数未満のセグメントを除外する（デフォルト 0.5秒）。
     public let minimumDuration: TimeInterval
 
+    /// ユーザー定義の正規化済みフィラーパターン。
+    private let normalizedCustomPatterns: Set<String>
+
     /// 正規化後の最長パターン文字数。正規化後にこれを超える入力は Set lookup を省略する。
-    private static let maxPatternLength: Int = {
+    /// 組み込みパターンとカスタムパターンのうち長い方。
+    private let maxPatternLength: Int
+
+    /// 組み込みパターン専用の最長文字数（static キャッシュ）。
+    private static let staticMaxPatternLength: Int = {
         normalizedHallucinations.map(\.count).max() ?? 0
     }()
 
@@ -20,6 +27,9 @@ public struct HallucinationFilter: Sendable {
         cs.formUnion(CharacterSet.controlCharacters.subtracting(.whitespacesAndNewlines))
         return cs
     }()
+
+    /// デフォルト設定のフィルターインスタンス。init が throws のためデフォルト引数で使用する。
+    public static let `default`: HallucinationFilter? = try? HallucinationFilter()
 
     /// 事前正規化済みのハルシネーションパターン Set（O(1) 判定）。
     /// 完全一致で判定する（部分一致にすると通常発話の誤検知リスクが高い）。
@@ -41,11 +51,18 @@ public struct HallucinationFilter: Sendable {
         return Set(patterns.map { normalize($0) })
     }()
 
-    public init(minimumDuration: TimeInterval = 0.5) throws(SpeechCoreError) {
+    /// - Parameters:
+    ///   - minimumDuration: この秒数未満のセグメントを除外する（デフォルト 0.5秒）。
+    ///   - customPatterns: ユーザー定義のフィラーパターン。正規化後に完全一致で除去する。
+    public init(minimumDuration: TimeInterval = 0.5, customPatterns: [String] = []) throws(SpeechCoreError) {
         guard minimumDuration >= 0, minimumDuration.isFinite else {
             throw SpeechCoreError.invalidConfiguration("minimumDuration must be >= 0 and finite")
         }
         self.minimumDuration = minimumDuration
+        let normalized = Set(customPatterns.map { Self.normalize($0) }.filter { !$0.isEmpty })
+        self.normalizedCustomPatterns = normalized
+        let customMax = normalized.map(\.count).max() ?? 0
+        self.maxPatternLength = max(Self.staticMaxPatternLength, customMax)
     }
 
     public func filter(_ segments: [TranscriptionSegment]) -> [TranscriptionSegment] {
@@ -58,8 +75,9 @@ public struct HallucinationFilter: Sendable {
         let normalized = Self.normalize(text)
         guard !normalized.isEmpty else { return false }
         // 正規化後の長さが最長パターンを超えていればマッチしない
-        if normalized.count > Self.maxPatternLength { return false }
+        if normalized.count > maxPatternLength { return false }
         return Self.normalizedHallucinations.contains(normalized)
+            || normalizedCustomPatterns.contains(normalized)
     }
 
     /// Unicode 正規化（NFKC）+ 大文字小文字/全角半角の統一 + 句読点・記号除去 + 内部空白圧縮。

@@ -8,7 +8,8 @@ public actor InsertTranscriptionUseCase {
     private let transcriptionService: any TranscriptionService
     private let textProcessor: (any TextProcessorProtocol)?
     private let inserter: any TextInserterProtocol
-    private let hallucinationFilter: HallucinationFilter
+    /// nil の場合はフィルタリングをスキップする（fillerFilterEnabled: false に対応）。
+    private let hallucinationFilter: HallucinationFilter?
 
     private enum State { case idle, active, stopping }
     private var state: State = .idle
@@ -19,13 +20,13 @@ public actor InsertTranscriptionUseCase {
         transcriptionService: any TranscriptionService,
         textProcessor: (any TextProcessorProtocol)? = nil,
         inserter: any TextInserterProtocol,
-        hallucinationFilter: HallucinationFilter? = nil
-    ) throws {
+        hallucinationFilter: HallucinationFilter? = HallucinationFilter.default
+    ) {
         self.recorder = recorder
         self.transcriptionService = transcriptionService
         self.textProcessor = textProcessor
         self.inserter = inserter
-        self.hallucinationFilter = try hallucinationFilter ?? HallucinationFilter()
+        self.hallucinationFilter = hallucinationFilter
     }
 
     /// 録音を開始し、セグメントの蓄積を始める。
@@ -40,9 +41,12 @@ public actor InsertTranscriptionUseCase {
                 var segments: [TranscriptionSegment] = []
                 for try await segment in stream {
                     try Task.checkCancellation()
-                    let filtered = hallucinationFilter.filter([segment])
-                    if let seg = filtered.first {
-                        segments.append(seg)
+                    if let filter = hallucinationFilter {
+                        if let seg = filter.filter([segment]).first {
+                            segments.append(seg)
+                        }
+                    } else {
+                        segments.append(segment)
                     }
                 }
                 return segments
