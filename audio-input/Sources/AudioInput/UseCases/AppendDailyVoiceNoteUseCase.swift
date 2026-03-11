@@ -16,6 +16,19 @@ public actor AppendDailyVoiceNoteUseCase {
     private var state: State = .idle
     private var streamTask: Task<[TranscriptionSegment], any Error>?
 
+    /// セッション開始日時。start() 時に確定し stop() のタイムスタンプ・ファイルパスに使う。
+    /// 23:59 に開始して 00:01 に終了しても、録音開始日のファイルに追記される。
+    private var sessionDate: Date?
+
+    /// DateFormatter は毎回生成コストがかかるため actor-isolated なインスタンス変数でキャッシュする。
+    private let timeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.calendar = Calendar(identifier: .gregorian)
+        f.dateFormat = "HH:mm"
+        return f
+    }()
+
     public init(
         recorder: any AudioRecorderProtocol,
         transcriptionService: any TranscriptionService,
@@ -34,6 +47,9 @@ public actor AppendDailyVoiceNoteUseCase {
     /// 既に開始済みの場合は SpeechCoreError.alreadyStarted を throw する。
     public func start() async throws {
         guard state == .idle else { throw SpeechCoreError.alreadyStarted }
+        // セッション基準日時を start() 時に確定する。
+        // stop() で Date() を取ると日付境界をまたいだ場合に翌日ファイルへ誤入力される。
+        sessionDate = Date()
         state = .active
         do {
             try await recorder.startRecording()
@@ -54,6 +70,7 @@ public actor AppendDailyVoiceNoteUseCase {
             }
         } catch {
             streamTask = nil
+            sessionDate = nil
             _ = try? await recorder.stopRecording()
             state = .idle
             throw error
@@ -66,6 +83,9 @@ public actor AppendDailyVoiceNoteUseCase {
         guard state == .active, let task = streamTask else { return }
         state = .stopping
         streamTask = nil
+        // セッション基準日時を取り出す。nil は start() が成功していれば発生しない。
+        let date = sessionDate ?? Date()
+        sessionDate = nil
         defer { state = .idle }
 
         var segments: [TranscriptionSegment] = []
@@ -92,18 +112,7 @@ public actor AppendDailyVoiceNoteUseCase {
             text = try await processor.process(text)
         }
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        // Date() を一度だけ取得し、タイムスタンプとファイルパスの両方に使う。
-        // 別々に Date() を呼ぶと日付境界で 23:59 のメモが翌日ファイルに入るズレが起きる。
-        let now = Date()
-        let timestamp = format(now)
-        try await sink.write("- [\(timestamp)] \(text)\n", date: now)
-    }
-
-    private func format(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.dateFormat = "HH:mm"
-        return formatter.string(from: date)
+        let timestamp = timeFormatter.string(from: date)
+        try await sink.write("- [\(timestamp)] \(text)\n", date: date)
     }
 }

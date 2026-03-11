@@ -33,6 +33,12 @@ public final class NotificationService {
             content: content,
             trigger: nil
         )
-        UNUserNotificationCenter.current().add(request)
+        UNUserNotificationCenter.current().add(request) { error in
+            // 通知配信失敗を通知で伝えることはできないためサイレントにする。
+            // デバッグビルドではアサーションで検出する。
+            if let error {
+                assertionFailure("NotificationService: failed to schedule notification: \(error)")
+            }
+        }
     }
 }

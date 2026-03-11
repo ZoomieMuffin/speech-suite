@@ -80,7 +80,23 @@ public final class AppController {
     }
 
     /// ホットキー監視を停止する。
+    /// 録音中の場合は UseCase を先に停止して確定処理を完了させてからホットキーを解除する。
+    /// これを省くと録音中データが消失し、recorder / transcriptionService が解放されない。
     public func stop() async {
+        switch activeMode {
+        case .insert:
+            do { try await insertUseCase.stop() } catch {
+                notificationService.notifyError(error, context: "テキスト挿入エラー")
+            }
+            activeMode = nil
+        case .dvn:
+            do { try await dvnUseCase.stop() } catch {
+                notificationService.notifyError(error, context: "Voice Note 保存エラー")
+            }
+            activeMode = nil
+        case nil:
+            break
+        }
         await insertManager.stop()
         await dvnManager.stop()
     }
