@@ -3,6 +3,10 @@ import SpeechCore
 
 /// Insert モードと Daily Voice Note モードの 2 つのホットキーを管理し、
 /// それぞれの UseCase に配線するオーケストレーター。
+///
+/// **設定の反映タイミング**: ホットキー設定・notesDir・フィルタ設定は `init` 時に
+/// `SettingsStore` からスナップショットとして読み込む。実行中の設定変更を反映するには
+/// `AppController` を再生成する必要がある。設定 UI 追加時に対応予定。
 @MainActor
 public final class AppController {
     private let insertManager: HotkeyManager
@@ -51,7 +55,11 @@ public final class AppController {
     }
 
     /// ホットキー監視を開始する。エラーはシステム通知で表示する。
+    /// 通知権限をホットキー登録より先に要求することで、起動直後の登録失敗通知が
+    /// 権限未取得（isAuthorized == false）で握り潰されるのを防ぐ。
     public func start() async {
+        await notificationService.requestAuthorization()
+
         do {
             try await insertManager.start { [weak self] event in
                 guard let self else { return }
