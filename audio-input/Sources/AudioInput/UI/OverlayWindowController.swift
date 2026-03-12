@@ -46,10 +46,11 @@ public final class OverlayWindowController {
         newPanel.hasShadow = false
         newPanel.isOpaque = false
 
-        // メインスクリーン下部中央に配置
+        // メインスクリーン下部中央に配置。
+        // visibleFrame を使うことで Dock やメニューバーに重ならない領域を基準にする。
         if let screen = NSScreen.main {
-            let x = screen.frame.midX - 120
-            let y = screen.frame.minY + 80
+            let x = screen.visibleFrame.midX - 120
+            let y = screen.visibleFrame.minY + 16
             newPanel.setFrameOrigin(NSPoint(x: x, y: y))
         }
         return newPanel

@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 
 /// アプリの録音状態を UI レイヤーへ公開する Observable モデル。
 /// AppController が更新し、MenuBarExtra ラベルとオーバーレイが購読する。
