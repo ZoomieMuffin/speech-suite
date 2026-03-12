@@ -73,12 +73,34 @@ private final class ThrowingInserter: TextInserterProtocol {
     }
 }
 
-private actor SlowRecorder: AudioRecorderProtocol {
+/// startRecording() への突入を通知し、テストが明示的に解放するまで待機するスタブ。
+/// Task.sleep に依存しない同期ポイントで early-stop 経路を安定して検証できる。
+private actor HandshakeRecorder: AudioRecorderProtocol {
     var isRecording = false
+    private var hasEntered = false
+    private var entryContinuation: CheckedContinuation<Void, Never>?
+    private var proceedContinuation: CheckedContinuation<Void, Never>?
+
+    /// startRecording() に入るまで呼び出し元を待機させる。
+    func awaitEntry() async {
+        if hasEntered { return }
+        await withCheckedContinuation { entryContinuation = $0 }
+    }
+
+    /// startRecording() を完了させる。
+    func proceed() {
+        proceedContinuation?.resume()
+        proceedContinuation = nil
+    }
+
     func startRecording() async throws {
-        try await Task.sleep(for: .milliseconds(50))
+        hasEntered = true
+        entryContinuation?.resume()
+        entryContinuation = nil
+        await withCheckedContinuation { proceedContinuation = $0 }
         isRecording = true
     }
+
     func stopRecording() async throws -> URL {
         isRecording = false
         return URL(fileURLWithPath: "/tmp/stub.wav")
@@ -312,9 +334,9 @@ private actor SlowRecorder: AudioRecorderProtocol {
 
 @Test @MainActor func insertUseCaseEarlyStopDuringStartRecording() async throws {
     // start() が recorder.startRecording() を await している最中に stop() を受け取る経路を検証。
-    // SlowRecorder が 50ms 待機する間に stop() を送り、stopRequested フラグと
-    // stopWhileStartingContinuation の経路（InsertTranscriptionUseCase.swift:87-96）を踏む。
-    let recorder = SlowRecorder()
+    // HandshakeRecorder の同期ポイントで startRecording() 突入を確認してから stop() を発行する。
+    // Task.sleep に依存しないため CI 負荷に関わらず安定して動作する。
+    let recorder = HandshakeRecorder()
     let transcription = StubTranscriptionService(segments: [])
     let inserter = CapturingInserter()
 
@@ -325,13 +347,18 @@ private actor SlowRecorder: AudioRecorderProtocol {
         hallucinationFilter: nil
     )
 
-    // start() を別タスクで起動し、startRecording() await 中に stop() を割り込ませる。
     let startTask = Task { try await useCase.start() }
-    try await Task.sleep(for: .milliseconds(10))
-    try await useCase.stop()
+    // startRecording() に入るまで待機 → use case actor はこの時点で空き状態。
+    await recorder.awaitEntry()
+    // stop() タスクを発行してから yield することで、start() が再開される前に
+    // stopRequested フラグが立つことを保証する。
+    let stopTask = Task { try await useCase.stop() }
+    await Task.yield()
+    // startRecording() を完了させ、start() に early-stop を検知させる。
+    await recorder.proceed()
+    try await stopTask.value
     try await startTask.value
 
-    // early-stop 後は inserter が呼ばれない。
     #expect(inserter.insertedTexts.isEmpty)
 }
 
