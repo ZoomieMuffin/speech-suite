@@ -20,7 +20,9 @@ public final class OverlayWindowController {
             panel = makePanel(appState: appState)
         }
         repositionIfNeeded()
-        panel?.orderFront(nil)
+        // orderFrontRegardless() はアプリが非アクティブな状態でも前面に表示する。
+        // グローバルホットキーで別アプリ操作中に起動する要件に必須。
+        panel?.orderFrontRegardless()
     }
 
     /// オーバーレイを非表示にする。
@@ -47,6 +49,9 @@ public final class OverlayWindowController {
         newPanel.backgroundColor = .clear
         newPanel.hasShadow = false
         newPanel.isOpaque = false
+        // アプリ非アクティブ時にパネルが自動的に隠れないようにする。
+        // グローバルホットキー操作中は常に別アプリがアクティブなため必須。
+        newPanel.hidesOnDeactivate = false
         return newPanel
     }
 

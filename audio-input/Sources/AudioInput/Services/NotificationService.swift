@@ -14,9 +14,13 @@ public final class NotificationService {
 
     public init() {}
 
-    /// 通知権限を要求する。
-    /// 同時呼び出しや重複呼び出しに対して Task デデュプリケーションで対応する。
-    /// 既存 Task が完了済みの場合は即座に return する。
+    /// 通知権限を確認・要求する。
+    ///
+    /// - 同時呼び出しは Task デデュプリケーションで一本化し、全呼び出し元が結果を共有する。
+    /// - Task 完了後は authorizationTask をリセットするため、次回呼び出しで再評価される。
+    ///   設定アプリで権限を変更した後も isAuthorized が追従する。
+    /// - 既に許可/拒否済みの場合は notificationSettings() で状態を確認し、
+    ///   requestAuthorization() ダイアログを不要に出さない。
     public func requestAuthorization() async {
         if let existing = authorizationTask {
             await existing.value
@@ -24,16 +28,28 @@ public final class NotificationService {
         }
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
-            do {
-                isAuthorized = try await UNUserNotificationCenter.current()
-                    .requestAuthorization(options: [.alert, .sound])
-                if !isAuthorized {
-                    // ユーザーが権限を拒否した場合。保存失敗等のエラーが通知できなくなる。
-                    logger.warning("Notification authorization denied by user — error notifications will be suppressed.")
-                }
-            } catch {
+            defer { authorizationTask = nil }
+
+            let current = await UNUserNotificationCenter.current().notificationSettings()
+            switch current.authorizationStatus {
+            case .authorized, .provisional, .ephemeral:
+                isAuthorized = true
+            case .denied:
                 isAuthorized = false
-                logger.error("Notification authorization request failed: \(error.localizedDescription, privacy: .public)")
+                logger.warning("Notification authorization denied by user — error notifications will be suppressed.")
+            case .notDetermined:
+                do {
+                    isAuthorized = try await UNUserNotificationCenter.current()
+                        .requestAuthorization(options: [.alert, .sound])
+                    if !isAuthorized {
+                        logger.warning("Notification authorization denied by user — error notifications will be suppressed.")
+                    }
+                } catch {
+                    isAuthorized = false
+                    logger.error("Notification authorization request failed: \(error.localizedDescription, privacy: .public)")
+                }
+            @unknown default:
+                isAuthorized = false
             }
         }
         authorizationTask = task
