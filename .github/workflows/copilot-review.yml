@@ -62,9 +62,9 @@ jobs:
             STATUS="❌ Failed"
           fi
           TEXT="${STATUS} PR Review: ${REPOSITORY}
-Branch: ${HEAD_REF}
-PR: ${PR_TITLE}
-${PR_URL}"
+          Branch: ${HEAD_REF}
+          PR: ${PR_TITLE}
+          ${PR_URL}"
           curl -s --fail -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
             -d chat_id="${TELEGRAM_CHAT_ID}" \
             --data-urlencode "text=${TEXT}"
