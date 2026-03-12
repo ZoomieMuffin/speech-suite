@@ -73,6 +73,7 @@ public final class AppController {
     /// いずれかのホットキー登録に失敗した場合は appState.status を .error に設定し、
     /// メニューバーアイコンでユーザーに知らせる。
     public func start() async {
+        hasRegistrationError = false
         await notificationService.requestAuthorization()
 
         do {
