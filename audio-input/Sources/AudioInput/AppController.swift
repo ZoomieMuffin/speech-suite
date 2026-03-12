@@ -14,6 +14,7 @@ public final class AppController {
     private let insertUseCase: InsertTranscriptionUseCase
     private let dvnUseCase: AppendDailyVoiceNoteUseCase
     private let notificationService: NotificationService
+    private let appState: AppState
 
     /// 現在アクティブなモード。Insert / DVN の同時使用を防ぐ排他制御に使う。
     /// recorder と transcriptionService は両 UseCase で共有しているため、
@@ -24,12 +25,14 @@ public final class AppController {
     public init(
         settingsStore: SettingsStore,
         notificationService: NotificationService,
+        appState: AppState,
         recorder: any AudioRecorderProtocol,
         transcriptionService: any TranscriptionService,
         inserter: any TextInserterProtocol
     ) throws {
         let settings = settingsStore.settings
         self.notificationService = notificationService
+        self.appState = appState
 
         let fillerFilter = try settings.fillerFilterEnabled
             ? HallucinationFilter(customPatterns: settings.fillerPatterns)
@@ -83,15 +86,19 @@ public final class AppController {
     public func stop() async {
         switch activeMode {
         case .insert:
+            appState.status = .transcribing(.insert)
             do { try await insertUseCase.stop() } catch {
                 notificationService.notifyError(error, context: "テキスト挿入エラー")
             }
             activeMode = nil
+            appState.status = .idle
         case .dvn:
+            appState.status = .transcribing(.dvn)
             do { try await dvnUseCase.stop() } catch {
                 notificationService.notifyError(error, context: "Voice Note 保存エラー")
             }
             activeMode = nil
+            appState.status = .idle
         case nil:
             break
         }
@@ -106,8 +113,10 @@ public final class AppController {
         case .pressed:
             guard activeMode == nil else { return }  // DVN がアクティブなら無視
             activeMode = .insert
+            appState.status = .recording(.insert)
             do { try await insertUseCase.start() } catch {
                 activeMode = nil
+                appState.status = .idle
                 notificationService.notifyError(error, context: "テキスト挿入エラー")
             }
         case .released:
@@ -115,10 +124,12 @@ public final class AppController {
             // activeMode は stop() 完了後にクリアする。
             // 先にクリアすると stop() の await 中に別モードの pressed が通り、
             // recorder / transcriptionService が stop() と start() で競合する。
+            appState.status = .transcribing(.insert)
             do { try await insertUseCase.stop() } catch {
                 notificationService.notifyError(error, context: "テキスト挿入エラー")
             }
             activeMode = nil
+            appState.status = .idle
         }
     }
 
@@ -127,16 +138,20 @@ public final class AppController {
         case .pressed:
             guard activeMode == nil else { return }  // Insert がアクティブなら無視
             activeMode = .dvn
+            appState.status = .recording(.dvn)
             do { try await dvnUseCase.start() } catch {
                 activeMode = nil
+                appState.status = .idle
                 notificationService.notifyError(error, context: "Voice Note 保存エラー")
             }
         case .released:
             guard activeMode == .dvn else { return }
+            appState.status = .transcribing(.dvn)
             do { try await dvnUseCase.stop() } catch {
                 notificationService.notifyError(error, context: "Voice Note 保存エラー")
             }
             activeMode = nil
+            appState.status = .idle
         }
     }
 }

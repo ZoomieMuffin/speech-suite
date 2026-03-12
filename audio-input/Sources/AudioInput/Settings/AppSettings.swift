@@ -17,6 +17,9 @@ public struct AppSettings: Codable, Sendable, Equatable {
     /// ユーザー定義のフィラーパターン（完全一致、正規化後に比較）
     public var fillerPatterns: [String] = []
 
+    /// Push-to-Talk 中のオーバーレイ表示の有効/無効（既定: ON）
+    public var overlayEnabled: Bool = true
+
     public init() {}
 }
 
