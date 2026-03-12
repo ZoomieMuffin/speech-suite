@@ -51,10 +51,21 @@ public final class OverlayWindowController {
     }
 
     /// show() のたびに呼び出してスクリーン位置を更新する。
-    /// NSScreen.main を毎回解決するため、マルチディスプレイ切り替えにも対応する。
     /// visibleFrame ベースで Dock / メニューバーとの重なりを回避する。
+    ///
+    /// スクリーン解決の優先順位:
+    /// 1. NSEvent.mouseLocation を含む画面（ホットキー押下時はカーソル位置が最も自然）
+    /// 2. NSScreen.main（フォールバック）
+    /// 3. NSScreen.screens.first（さらなるフォールバック）
+    /// いずれも nil / 空の場合は配置をスキップする（(0,0) への誤配置を防ぐ）。
     private func repositionIfNeeded() {
-        guard let panel, let screen = NSScreen.main else { return }
+        guard let panel else { return }
+        let cursor = NSEvent.mouseLocation
+        let screen =
+            NSScreen.screens.first(where: { $0.frame.contains(cursor) })
+            ?? NSScreen.main
+            ?? NSScreen.screens.first
+        guard let screen else { return }
         let x = screen.visibleFrame.midX - panel.frame.width / 2
         let y = screen.visibleFrame.minY + 16
         panel.setFrameOrigin(NSPoint(x: x, y: y))
