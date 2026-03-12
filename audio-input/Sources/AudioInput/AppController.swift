@@ -15,6 +15,9 @@ public final class AppController {
     private let dvnUseCase: AppendDailyVoiceNoteUseCase
     private let notificationService: NotificationService
     private let appState: AppState
+    private let overlayController: OverlayWindowController
+    /// オーバーレイ表示設定。init 時のスナップショット。設定 UI 追加時に live-update 対応予定。
+    private let overlayEnabled: Bool
 
     /// 現在アクティブなモード。Insert / DVN の同時使用を防ぐ排他制御に使う。
     /// recorder と transcriptionService は両 UseCase で共有しているため、
@@ -26,6 +29,7 @@ public final class AppController {
         settingsStore: SettingsStore,
         notificationService: NotificationService,
         appState: AppState,
+        overlayController: OverlayWindowController,
         recorder: any AudioRecorderProtocol,
         transcriptionService: any TranscriptionService,
         inserter: any TextInserterProtocol
@@ -33,6 +37,8 @@ public final class AppController {
         let settings = settingsStore.settings
         self.notificationService = notificationService
         self.appState = appState
+        self.overlayController = overlayController
+        self.overlayEnabled = settings.overlayEnabled
 
         let fillerFilter = try settings.fillerFilterEnabled
             ? HallucinationFilter(customPatterns: settings.fillerPatterns)
@@ -60,14 +66,19 @@ public final class AppController {
     /// ホットキー監視を開始する。エラーはシステム通知で表示する。
     /// 通知権限をホットキー登録より先に要求することで、起動直後の登録失敗通知が
     /// 権限未取得（isAuthorized == false）で握り潰されるのを防ぐ。
+    /// いずれかのホットキー登録に失敗した場合は appState.status を .error に設定し、
+    /// メニューバーアイコンでユーザーに知らせる。
     public func start() async {
         await notificationService.requestAuthorization()
+
+        var registrationFailed = false
 
         do {
             try await insertManager.start { [weak self] event in
                 await self?.handleInsert(event)
             }
         } catch {
+            registrationFailed = true
             notificationService.notifyError(error, context: "Insert ホットキー")
         }
 
@@ -76,7 +87,12 @@ public final class AppController {
                 await self?.handleDVN(event)
             }
         } catch {
+            registrationFailed = true
             notificationService.notifyError(error, context: "Voice Note ホットキー")
+        }
+
+        if registrationFailed {
+            updateStatus(.error)
         }
     }
 
@@ -86,19 +102,19 @@ public final class AppController {
     public func stop() async {
         switch activeMode {
         case .insert:
-            appState.status = .transcribing(.insert)
+            updateStatus(.transcribing(.insert))
             do { try await insertUseCase.stop() } catch {
                 notificationService.notifyError(error, context: "テキスト挿入エラー")
             }
             activeMode = nil
-            appState.status = .idle
+            updateStatus(.idle)
         case .dvn:
-            appState.status = .transcribing(.dvn)
+            updateStatus(.transcribing(.dvn))
             do { try await dvnUseCase.stop() } catch {
                 notificationService.notifyError(error, context: "Voice Note 保存エラー")
             }
             activeMode = nil
-            appState.status = .idle
+            updateStatus(.idle)
         case nil:
             break
         }
@@ -108,15 +124,29 @@ public final class AppController {
 
     // MARK: - Private
 
+    /// appState.status を更新し、状態に応じてオーバーレイを表示/非表示にする。
+    /// SwiftUI View のライフサイクルに依存せず、常に正しく動作する。
+    private func updateStatus(_ status: AppState.Status) {
+        appState.status = status
+        switch status {
+        case .recording, .transcribing:
+            if overlayEnabled {
+                overlayController.show(appState: appState)
+            }
+        case .idle, .error:
+            overlayController.hide()
+        }
+    }
+
     private func handleInsert(_ event: HotkeyEvent) async {
         switch event {
         case .pressed:
             guard activeMode == nil else { return }  // DVN がアクティブなら無視
             activeMode = .insert
-            appState.status = .recording(.insert)
+            updateStatus(.recording(.insert))
             do { try await insertUseCase.start() } catch {
                 activeMode = nil
-                appState.status = .idle
+                updateStatus(.idle)
                 notificationService.notifyError(error, context: "テキスト挿入エラー")
             }
         case .released:
@@ -124,12 +154,12 @@ public final class AppController {
             // activeMode は stop() 完了後にクリアする。
             // 先にクリアすると stop() の await 中に別モードの pressed が通り、
             // recorder / transcriptionService が stop() と start() で競合する。
-            appState.status = .transcribing(.insert)
+            updateStatus(.transcribing(.insert))
             do { try await insertUseCase.stop() } catch {
                 notificationService.notifyError(error, context: "テキスト挿入エラー")
             }
             activeMode = nil
-            appState.status = .idle
+            updateStatus(.idle)
         }
     }
 
@@ -138,20 +168,20 @@ public final class AppController {
         case .pressed:
             guard activeMode == nil else { return }  // Insert がアクティブなら無視
             activeMode = .dvn
-            appState.status = .recording(.dvn)
+            updateStatus(.recording(.dvn))
             do { try await dvnUseCase.start() } catch {
                 activeMode = nil
-                appState.status = .idle
+                updateStatus(.idle)
                 notificationService.notifyError(error, context: "Voice Note 保存エラー")
             }
         case .released:
             guard activeMode == .dvn else { return }
-            appState.status = .transcribing(.dvn)
+            updateStatus(.transcribing(.dvn))
             do { try await dvnUseCase.stop() } catch {
                 notificationService.notifyError(error, context: "Voice Note 保存エラー")
             }
             activeMode = nil
-            appState.status = .idle
+            updateStatus(.idle)
         }
     }
 }

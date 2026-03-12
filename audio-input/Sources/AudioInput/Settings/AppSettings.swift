@@ -21,6 +21,30 @@ public struct AppSettings: Codable, Sendable, Equatable {
     public var overlayEnabled: Bool = true
 
     public init() {}
+
+    // MARK: - Codable
+
+    private enum CodingKeys: String, CodingKey {
+        case insertHotkey
+        case dailyVoiceNoteHotkey
+        case notesDirPath
+        case fillerFilterEnabled
+        case fillerPatterns
+        case overlayEnabled
+    }
+
+    /// カスタムデコーダー。
+    /// 旧バージョンの JSON に `overlayEnabled` キーが存在しない場合に既定値 `true` を使う。
+    /// これにより、アップグレード時に全設定がリセットされる問題を防ぐ。
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        insertHotkey         = try c.decode(HotkeyConfiguration.self, forKey: .insertHotkey)
+        dailyVoiceNoteHotkey = try c.decode(HotkeyConfiguration.self, forKey: .dailyVoiceNoteHotkey)
+        notesDirPath         = try c.decode(String.self,               forKey: .notesDirPath)
+        fillerFilterEnabled  = try c.decode(Bool.self,                 forKey: .fillerFilterEnabled)
+        fillerPatterns       = try c.decode([String].self,             forKey: .fillerPatterns)
+        overlayEnabled       = try c.decodeIfPresent(Bool.self, forKey: .overlayEnabled) ?? true
+    }
 }
 
 extension AppSettings {

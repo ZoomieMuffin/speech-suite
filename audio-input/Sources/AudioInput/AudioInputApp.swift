@@ -8,15 +8,24 @@ struct AudioInputApp: App {
     @State private var notificationService = NotificationService()
     @State private var overlayController = OverlayWindowController()
     // TODO: AudioRecorderProtocol と TranscriptionService の具体実装が揃う PRV-72 で初期化する。
+    //       初期化例:
+    //         controller = try? AppController(
+    //             settingsStore: settingsStore,
+    //             notificationService: notificationService,
+    //             appState: appState,
+    //             overlayController: overlayController,
+    //             recorder: <AudioRecorderProtocol実装>,
+    //             transcriptionService: <TranscriptionService実装>,
+    //             inserter: <TextInserterProtocol実装>
+    //         )
+    //       AppController が nil の間、アイコンは .idle 固定でオーバーレイは表示されない。
     @State private var controller: AppController?
 
     var body: some Scene {
         MenuBarExtra {
             MenuBarContentView(
                 appState: appState,
-                settingsStore: settingsStore,
-                notificationService: notificationService,
-                overlayController: overlayController
+                notificationService: notificationService
             )
         } label: {
             MenuBarIconView(status: appState.status)
@@ -48,28 +57,17 @@ private struct MenuBarIconView: View {
 // MARK: - MenuBarContentView
 
 /// メニューバーメニューのコンテンツ。
-/// `.onChange` でオーバーレイの表示/非表示を制御する。
+/// オーバーレイ表示制御は AppController.updateStatus(_:) が担うため、
+/// View のライフサイクル（メニュー開閉）に依存しない。
 private struct MenuBarContentView: View {
     let appState: AppState
-    let settingsStore: SettingsStore
     let notificationService: NotificationService
-    let overlayController: OverlayWindowController
 
     var body: some View {
         Text(statusLabel)
             .foregroundStyle(.secondary)
             .task {
                 await notificationService.requestAuthorization()
-            }
-            .onChange(of: appState.status) { _, newStatus in
-                switch newStatus {
-                case .recording, .transcribing:
-                    if settingsStore.settings.overlayEnabled {
-                        overlayController.show(appState: appState)
-                    }
-                case .idle, .error:
-                    overlayController.hide()
-                }
             }
         Divider()
         Button("Quit") {

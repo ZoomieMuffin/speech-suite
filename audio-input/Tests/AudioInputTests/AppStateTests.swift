@@ -61,6 +61,16 @@ import Testing
     #expect(decoded.overlayEnabled == false)
 }
 
-// Note: スキーマ変更で overlayEnabled キーが欠落した旧 JSON のデコードは失敗する。
-// SettingsStore は try? で失敗を捕捉し AppSettings() のデフォルト値で起動するため、
-// 旧環境からのアップデート後も overlayEnabled は既定値 true で動作する。
+@Test func appSettingsOverlayEnabledDefaultWhenKeyMissing() throws {
+    // overlayEnabled キーを含まない旧スキーマの JSON でも既定値 true で復元できる。
+    // カスタム init(from:) が decodeIfPresent ?? true でフォールバックするため、
+    // 既存ユーザーの設定全体がリセットされない。
+    var dict = try JSONSerialization.jsonObject(
+        with: JSONEncoder().encode(AppSettings())) as! [String: Any]
+    dict.removeValue(forKey: "overlayEnabled")
+    let data = try JSONSerialization.data(withJSONObject: dict)
+    let decoded = try JSONDecoder().decode(AppSettings.self, from: data)
+    #expect(decoded.overlayEnabled == true)
+    #expect(decoded.notesDirPath == "~/audio")
+    #expect(decoded.fillerFilterEnabled == true)
+}
