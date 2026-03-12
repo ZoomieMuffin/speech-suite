@@ -44,7 +44,6 @@ public final class OverlayWindowController {
         newPanel.contentView = hostingView
         newPanel.level = .floating
         newPanel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        newPanel.isMovableByWindowBackground = true
         newPanel.backgroundColor = .clear
         newPanel.hasShadow = false
         newPanel.isOpaque = false

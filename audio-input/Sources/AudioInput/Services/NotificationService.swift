@@ -6,12 +6,15 @@ import UserNotifications
 @MainActor
 public final class NotificationService {
     private var isAuthorized = false
+    private var authorizationRequested = false
     private let logger = Logger(subsystem: "com.speech-suite.audio-input", category: "NotificationService")
 
     public init() {}
 
-    /// 通知権限を要求する。初回起動時に呼ぶ。
+    /// 通知権限を要求する。初回のみシステム API を呼び出し、以降は即座に return する。
     public func requestAuthorization() async {
+        guard !authorizationRequested else { return }
+        authorizationRequested = true
         do {
             isAuthorized = try await UNUserNotificationCenter.current()
                 .requestAuthorization(options: [.alert, .sound])
