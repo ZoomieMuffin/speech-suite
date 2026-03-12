@@ -12,11 +12,14 @@ public final class OverlayWindowController {
     public init() {}
 
     /// オーバーレイを表示する。
+    /// show() のたびにスクリーンを再解決して位置を更新するため、
+    /// マルチディスプレイ切り替え後や NSScreen.main が初回 nil だった場合も正しく配置される。
     /// - Parameter appState: OverlayView が購読する状態モデル。
     public func show(appState: AppState) {
         if panel == nil {
             panel = makePanel(appState: appState)
         }
+        repositionIfNeeded()
         panel?.orderFront(nil)
     }
 
@@ -45,14 +48,16 @@ public final class OverlayWindowController {
         newPanel.backgroundColor = .clear
         newPanel.hasShadow = false
         newPanel.isOpaque = false
-
-        // メインスクリーン下部中央に配置。
-        // visibleFrame を使うことで Dock やメニューバーに重ならない領域を基準にする。
-        if let screen = NSScreen.main {
-            let x = screen.visibleFrame.midX - 120
-            let y = screen.visibleFrame.minY + 16
-            newPanel.setFrameOrigin(NSPoint(x: x, y: y))
-        }
         return newPanel
+    }
+
+    /// show() のたびに呼び出してスクリーン位置を更新する。
+    /// NSScreen.main を毎回解決するため、マルチディスプレイ切り替えにも対応する。
+    /// visibleFrame ベースで Dock / メニューバーとの重なりを回避する。
+    private func repositionIfNeeded() {
+        guard let panel, let screen = NSScreen.main else { return }
+        let x = screen.visibleFrame.midX - panel.frame.width / 2
+        let y = screen.visibleFrame.minY + 16
+        panel.setFrameOrigin(NSPoint(x: x, y: y))
     }
 }
