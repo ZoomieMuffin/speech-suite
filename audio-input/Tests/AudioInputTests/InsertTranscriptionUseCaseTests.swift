@@ -60,6 +60,19 @@ private struct UpperCaseProcessor: TextProcessorProtocol {
     }
 }
 
+private struct ThrowingProcessor: TextProcessorProtocol {
+    func process(_ text: String) async throws -> String {
+        throw URLError(.unknown)
+    }
+}
+
+@MainActor
+private final class ThrowingInserter: TextInserterProtocol {
+    func insert(_ text: String) async throws {
+        throw URLError(.unknown)
+    }
+}
+
 // MARK: - Tests
 
 @Test @MainActor func insertUseCaseNormalFlowInsertsText() async throws {
@@ -240,5 +253,47 @@ private struct UpperCaseProcessor: TextProcessorProtocol {
     // .alreadyStarted ではなく URLError を throw する。
     await #expect(throws: URLError.self) {
         try await useCase.start()
+    }
+}
+
+@Test @MainActor func insertUseCaseProcessorFailurePropagatesOnStop() async throws {
+    // textProcessor.process(_:) が throw した場合、stop() がそのエラーを伝播することを確認。
+    let segment = try TranscriptionSegment(text: "hello", startTime: 0, endTime: 1)
+    let recorder = StubRecorder()
+    let transcription = StubTranscriptionService(segments: [segment])
+    let inserter = CapturingInserter()
+
+    let useCase = InsertTranscriptionUseCase(
+        recorder: recorder,
+        transcriptionService: transcription,
+        textProcessor: ThrowingProcessor(),
+        inserter: inserter,
+        hallucinationFilter: nil
+    )
+
+    try await useCase.start()
+    await #expect(throws: (any Error).self) {
+        try await useCase.stop()
+    }
+    #expect(inserter.insertedTexts.isEmpty)
+}
+
+@Test @MainActor func insertUseCaseInserterFailurePropagatesOnStop() async throws {
+    // inserter.insert(_:) が throw した場合、stop() がそのエラーを伝播することを確認。
+    let segment = try TranscriptionSegment(text: "hello", startTime: 0, endTime: 1)
+    let recorder = StubRecorder()
+    let transcription = StubTranscriptionService(segments: [segment])
+    let inserter = ThrowingInserter()
+
+    let useCase = InsertTranscriptionUseCase(
+        recorder: recorder,
+        transcriptionService: transcription,
+        inserter: inserter,
+        hallucinationFilter: nil
+    )
+
+    try await useCase.start()
+    await #expect(throws: (any Error).self) {
+        try await useCase.stop()
     }
 }
