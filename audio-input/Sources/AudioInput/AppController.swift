@@ -25,6 +25,10 @@ public final class AppController {
     private enum ActiveMode { case insert, dvn }
     private var activeMode: ActiveMode?
 
+    /// ホットキー登録失敗フラグ。start() で一度でも失敗すると true になる。
+    /// updateStatus(.idle) 時に .error に留めることで、片方のホットキーが壊れた事実を保持する。
+    private var hasRegistrationError = false
+
     public init(
         settingsStore: SettingsStore,
         notificationService: NotificationService,
@@ -71,14 +75,12 @@ public final class AppController {
     public func start() async {
         await notificationService.requestAuthorization()
 
-        var registrationFailed = false
-
         do {
             try await insertManager.start { [weak self] event in
                 await self?.handleInsert(event)
             }
         } catch {
-            registrationFailed = true
+            hasRegistrationError = true
             notificationService.notifyError(error, context: "Insert ホットキー")
         }
 
@@ -87,11 +89,11 @@ public final class AppController {
                 await self?.handleDVN(event)
             }
         } catch {
-            registrationFailed = true
+            hasRegistrationError = true
             notificationService.notifyError(error, context: "Voice Note ホットキー")
         }
 
-        if registrationFailed {
+        if hasRegistrationError {
             updateStatus(.error)
         }
     }
@@ -126,14 +128,25 @@ public final class AppController {
 
     /// appState.status を更新し、状態に応じてオーバーレイを表示/非表示にする。
     /// SwiftUI View のライフサイクルに依存せず、常に正しく動作する。
+    ///
+    /// - オーバーレイは .recording 中のみ表示する。.transcribing でキーを離した時点で
+    ///   即座に消えるため、「離すと消える」仕様と一致する。
+    /// - .idle に戻る際、登録失敗がある場合は .error を維持する。
+    ///   片方のホットキーが壊れた状態でも正常フローに上書きされない。
     private func updateStatus(_ status: AppState.Status) {
-        appState.status = status
-        switch status {
-        case .recording, .transcribing:
+        let effective: AppState.Status
+        if case .idle = status, hasRegistrationError {
+            effective = .error
+        } else {
+            effective = status
+        }
+        appState.status = effective
+        switch effective {
+        case .recording:
             if overlayEnabled {
                 overlayController.show(appState: appState)
             }
-        case .idle, .error:
+        case .transcribing, .idle, .error:
             overlayController.hide()
         }
     }
