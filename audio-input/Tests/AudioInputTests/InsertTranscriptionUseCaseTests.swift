@@ -73,6 +73,18 @@ private final class ThrowingInserter: TextInserterProtocol {
     }
 }
 
+private actor SlowRecorder: AudioRecorderProtocol {
+    var isRecording = false
+    func startRecording() async throws {
+        try await Task.sleep(for: .milliseconds(50))
+        isRecording = true
+    }
+    func stopRecording() async throws -> URL {
+        isRecording = false
+        return URL(fileURLWithPath: "/tmp/stub.wav")
+    }
+}
+
 // MARK: - Tests
 
 @Test @MainActor func insertUseCaseNormalFlowInsertsText() async throws {
@@ -296,4 +308,52 @@ private final class ThrowingInserter: TextInserterProtocol {
     await #expect(throws: (any Error).self) {
         try await useCase.stop()
     }
+}
+
+@Test @MainActor func insertUseCaseEarlyStopDuringStartRecording() async throws {
+    // start() が recorder.startRecording() を await している最中に stop() を受け取る経路を検証。
+    // SlowRecorder が 50ms 待機する間に stop() を送り、stopRequested フラグと
+    // stopWhileStartingContinuation の経路（InsertTranscriptionUseCase.swift:87-96）を踏む。
+    let recorder = SlowRecorder()
+    let transcription = StubTranscriptionService(segments: [])
+    let inserter = CapturingInserter()
+
+    let useCase = InsertTranscriptionUseCase(
+        recorder: recorder,
+        transcriptionService: transcription,
+        inserter: inserter,
+        hallucinationFilter: nil
+    )
+
+    // start() を別タスクで起動し、startRecording() await 中に stop() を割り込ませる。
+    let startTask = Task { try await useCase.start() }
+    try await Task.sleep(for: .milliseconds(10))
+    try await useCase.stop()
+    try await startTask.value
+
+    // early-stop 後は inserter が呼ばれない。
+    #expect(inserter.insertedTexts.isEmpty)
+}
+
+@Test @MainActor func insertUseCaseHallucinationFilterRemovesCustomPattern() async throws {
+    // カスタムパターン "えーと" に完全一致するセグメントはフィルタで除去され、
+    // それ以外の "こんにちは" だけが挿入されることを確認する。
+    let fillerSeg  = try TranscriptionSegment(text: "えーと",    startTime: 0, endTime: 1)
+    let normalSeg  = try TranscriptionSegment(text: "こんにちは", startTime: 1, endTime: 2)
+    let recorder = StubRecorder()
+    let transcription = StubTranscriptionService(segments: [fillerSeg, normalSeg])
+    let inserter = CapturingInserter()
+    let filter = try HallucinationFilter(customPatterns: ["えーと"])
+
+    let useCase = InsertTranscriptionUseCase(
+        recorder: recorder,
+        transcriptionService: transcription,
+        inserter: inserter,
+        hallucinationFilter: filter
+    )
+
+    try await useCase.start()
+    try await useCase.stop()
+
+    #expect(inserter.insertedTexts == ["こんにちは"])
 }
