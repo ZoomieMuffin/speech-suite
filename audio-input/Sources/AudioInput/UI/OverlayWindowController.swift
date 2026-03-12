@@ -52,6 +52,9 @@ public final class OverlayWindowController {
         // アプリ非アクティブ時にパネルが自動的に隠れないようにする。
         // グローバルホットキー操作中は常に別アプリがアクティブなため必須。
         newPanel.hidesOnDeactivate = false
+        // nonactivatingPanel はフォーカスを奪わないが、クリック透過ではない。
+        // オーバーレイは表示専用なのでマウスイベントを無視して背後アプリの操作を妨げない。
+        newPanel.ignoresMouseEvents = true
         return newPanel
     }
 
