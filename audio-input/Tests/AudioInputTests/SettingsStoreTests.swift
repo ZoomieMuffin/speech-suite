@@ -11,7 +11,8 @@ import Testing
 @Suite(.serialized)
 @MainActor
 struct SettingsStoreTests {
-    private let settingsKey = "com.speech-suite.AppSettings"
+    // SettingsStore.userDefaultsKey を直接参照することで、キー変更時にテスト側も追従する。
+    private let settingsKey = SettingsStore.userDefaultsKey
 
     @Test func defaultsWhenNoPriorData() {
         UserDefaults.standard.removeObject(forKey: settingsKey)

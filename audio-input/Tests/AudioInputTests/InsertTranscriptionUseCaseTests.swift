@@ -46,6 +46,20 @@ private actor FailingTranscriptionService: TranscriptionService {
     func stop() async throws(SpeechCoreError) {}
 }
 
+private actor FailOnceTranscriptionService: TranscriptionService {
+    nonisolated let id = "fail-once-stub"
+    var isAvailable = true
+    private var callCount = 0
+
+    func start() throws(SpeechCoreError) -> AsyncThrowingStream<TranscriptionSegment, any Error> {
+        callCount += 1
+        if callCount == 1 { throw .invalidConfiguration("first call fails") }
+        return AsyncThrowingStream { continuation in continuation.finish() }
+    }
+
+    func stop() async throws(SpeechCoreError) {}
+}
+
 @MainActor
 private final class CapturingInserter: TextInserterProtocol {
     var insertedTexts: [String] = []
@@ -383,4 +397,29 @@ private actor HandshakeRecorder: AudioRecorderProtocol {
     try await useCase.stop()
 
     #expect(inserter.insertedTexts == ["こんにちは"])
+}
+
+@Test @MainActor func insertUseCaseIdleAfterTranscriptionStartFailure() async throws {
+    // transcriptionService.start() が失敗した後、state が .idle に戻り
+    // 再び start() できることを確認（recorder 失敗の対称テスト）。
+    let recorder = StubRecorder()
+    let transcription = FailOnceTranscriptionService()
+    let inserter = CapturingInserter()
+
+    let useCase = InsertTranscriptionUseCase(
+        recorder: recorder,
+        transcriptionService: transcription,
+        inserter: inserter,
+        hallucinationFilter: nil
+    )
+
+    // 1 回目: transcription.start() が失敗する
+    await #expect(throws: SpeechCoreError.self) {
+        try await useCase.start()
+    }
+
+    // state が .idle に戻っているため 2 回目は .alreadyStarted を throw せず正常完了する。
+    try await useCase.start()
+    try await useCase.stop()
+    #expect(inserter.insertedTexts.isEmpty)
 }
