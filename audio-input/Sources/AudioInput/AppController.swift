@@ -141,6 +141,14 @@ public final class AppController {
             effective = status
         }
         appState.status = effective
+        // 録音終了・文字起こし移行時にレベルをリセットして残像を防ぐ。
+        // PRV-72 で実測値が入っても次回表示直後に前回値が残らない。
+        switch effective {
+        case .transcribing, .idle, .error:
+            appState.audioLevel = 0.0
+        case .recording:
+            break
+        }
         switch effective {
         case .recording:
             if overlayEnabled {
