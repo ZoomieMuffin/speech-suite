@@ -6,26 +6,38 @@ import UserNotifications
 @MainActor
 public final class NotificationService {
     private var isAuthorized = false
-    private var authorizationRequested = false
     private let logger = Logger(subsystem: "com.speech-suite.audio-input", category: "NotificationService")
+    /// 進行中または完了済みの権限要求 Task。
+    /// 複数の呼び出し元が同時に requestAuthorization() を呼んでも
+    /// 実際のシステム API は一度だけ実行され、全呼び出し元が結果を共有する。
+    private var authorizationTask: Task<Void, Never>?
 
     public init() {}
 
-    /// 通知権限を要求する。初回のみシステム API を呼び出し、以降は即座に return する。
+    /// 通知権限を要求する。
+    /// 同時呼び出しや重複呼び出しに対して Task デデュプリケーションで対応する。
+    /// 既存 Task が完了済みの場合は即座に return する。
     public func requestAuthorization() async {
-        guard !authorizationRequested else { return }
-        authorizationRequested = true
-        do {
-            isAuthorized = try await UNUserNotificationCenter.current()
-                .requestAuthorization(options: [.alert, .sound])
-            if !isAuthorized {
-                // ユーザーが権限を拒否した場合。保存失敗等のエラーが通知できなくなる。
-                logger.warning("Notification authorization denied by user — error notifications will be suppressed.")
-            }
-        } catch {
-            isAuthorized = false
-            logger.error("Notification authorization request failed: \(error.localizedDescription, privacy: .public)")
+        if let existing = authorizationTask {
+            await existing.value
+            return
         }
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                isAuthorized = try await UNUserNotificationCenter.current()
+                    .requestAuthorization(options: [.alert, .sound])
+                if !isAuthorized {
+                    // ユーザーが権限を拒否した場合。保存失敗等のエラーが通知できなくなる。
+                    logger.warning("Notification authorization denied by user — error notifications will be suppressed.")
+                }
+            } catch {
+                isAuthorized = false
+                logger.error("Notification authorization request failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+        authorizationTask = task
+        await task.value
     }
 
     /// エラーをシステム通知で表示する。

@@ -23,9 +23,16 @@ struct OverlayView: View {
         .padding(.vertical, 10)
         .background(.ultraThinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .onAppear {
-            withAnimation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true)) {
-                pulse = true
+        // initial: true で初回表示時にも即座に評価される。
+        // NSPanel が orderOut で非表示になっても SwiftUI view は生存し続けるため、
+        // status が .idle に戻った時点でアニメーションを止めて CPU を節約する。
+        .onChange(of: appState.status, initial: true) { _, newStatus in
+            if case .recording = newStatus {
+                withAnimation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true)) {
+                    pulse = true
+                }
+            } else {
+                pulse = false
             }
         }
     }
