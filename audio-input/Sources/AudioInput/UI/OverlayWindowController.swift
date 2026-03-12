@@ -6,12 +6,14 @@ import SwiftUI
 /// `NSPanel` の `nonactivatingPanel` スタイルを使用し、フォーカスを奪わない。
 /// パネルは初回 `show()` 時に一度だけ生成し、以降は表示/非表示を切り替える。
 @MainActor
-final class OverlayWindowController {
+public final class OverlayWindowController {
     private var panel: NSPanel?
+
+    public init() {}
 
     /// オーバーレイを表示する。
     /// - Parameter appState: OverlayView が購読する状態モデル。
-    func show(appState: AppState) {
+    public func show(appState: AppState) {
         if panel == nil {
             panel = makePanel(appState: appState)
         }
@@ -19,7 +21,7 @@ final class OverlayWindowController {
     }
 
     /// オーバーレイを非表示にする。
-    func hide() {
+    public func hide() {
         panel?.orderOut(nil)
     }
 
