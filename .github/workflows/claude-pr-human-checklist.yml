@@ -7,7 +7,7 @@ on:
 permissions:
   contents: read
   issues: write
-  pull-requests: read
+  pull-requests: write
 
 concurrency:
   group: claude-pr-human-checklist-${{ github.event.pull_request.number }}
@@ -52,13 +52,16 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           prompt: ${{ steps.prepare.outputs.prompt }}
+          show_full_output: 'true'
           claude_args: |
-            --max-turns 4
+            --max-turns 10
+            --permission-mode bypassPermissions
 
-      - name: Upsert PR comment
-        if: ${{ steps.prepare.outputs.enabled == 'true' }}
+      - name: Update checklist comment
+        if: ${{ steps.prepare.conclusion == 'success' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPOSITORY: ${{ github.repository }}
+          CHECKLIST_ENABLED: ${{ steps.prepare.outputs.enabled }}
         run: python scripts/upsert_pr_human_checklist_comment.py
