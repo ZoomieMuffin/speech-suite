@@ -123,6 +123,18 @@ private struct ProviderPickerView: View {
     var body: some View {
         // nonisolated な id を同期アクセスで収集し、ForEach に String 配列を渡す。
         // existential key path (\.id) を避けることで Swift 6 の制約を回避する。
+        let selectedId = settingsStore.settings.selectedTranscriptionServiceId
+        Button {
+            settingsStore.update { $0.selectedTranscriptionServiceId = nil }
+        } label: {
+            HStack {
+                Text("Auto")
+                Spacer()
+                if selectedId == nil {
+                    Image(systemName: "checkmark")
+                }
+            }
+        }
         let serviceIds = services.map { $0.id }
         ForEach(serviceIds, id: \.self) { serviceId in
             Button {
@@ -131,7 +143,7 @@ private struct ProviderPickerView: View {
                 HStack {
                     Text(displayName(for: serviceId))
                     Spacer()
-                    if settingsStore.settings.selectedTranscriptionServiceId == serviceId {
+                    if selectedId == serviceId {
                         Image(systemName: "checkmark")
                     }
                 }

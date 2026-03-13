@@ -67,6 +67,7 @@ public actor SpeechAnalyzerTranscriber: TranscriptionService {
         inputContinuation = nil
         await analyzerTask?.value
         analyzerTask = nil
+        isRunning = false
     }
 
     // MARK: - Private
