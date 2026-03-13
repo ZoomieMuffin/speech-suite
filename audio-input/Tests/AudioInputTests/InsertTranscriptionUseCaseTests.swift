@@ -364,13 +364,18 @@ private actor HandshakeRecorder: AudioRecorderProtocol {
     let startTask = Task { try await useCase.start() }
     // startRecording() に入るまで待機 → use case actor はこの時点で空き状態。
     await recorder.awaitEntry()
-    // stop() タスクを発行してから yield することで、start() が再開される前に
-    // stopRequested フラグが立つことを保証する。
-    let stopTask = Task { try await useCase.stop() }
-    await Task.yield()
-    // startRecording() を完了させ、start() に early-stop を検知させる。
-    await recorder.proceed()
-    try await stopTask.value
+
+    // 設計: stop() を先にキューに積み、recorder.proceed() を後から発行する。
+    //
+    // 1. Task { await recorder.proceed() } を作成 → MainActor にスケジュール済みだが未実行。
+    // 2. try await useCase.stop() → stop() を use case actor の FIFO キューに積み、
+    //    テストタスクが suspend → MainActor が解放される。
+    // 3. MainActor が空いた時点で (1) の Task が動き recorder.proceed() を発行。
+    //    これにより startRecording() が完了し start() の継続が use case actor にキューイング。
+    // 4. use case actor は FIFO のため stop()（ステップ 2）を start() 継続（ステップ 3）より
+    //    先に処理し stopRequested = true を設定してから start() を再開する。
+    Task { await recorder.proceed() }
+    try await useCase.stop()
     try await startTask.value
 
     #expect(inserter.insertedTexts.isEmpty)
