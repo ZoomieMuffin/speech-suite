@@ -6,7 +6,6 @@ on:
 
 permissions:
   contents: read
-  issues: write
   pull-requests: write
 
 concurrency:
@@ -37,10 +36,6 @@ jobs:
 
       - name: Prepare prompt
         id: prepare
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          REPOSITORY: ${{ github.repository }}
         run: |
           mkdir -p .tmp
           python scripts/prepare_pr_human_checklist.py

@@ -7,11 +7,12 @@ from __future__ import annotations
 import os
 import sys
 import uuid
+from pathlib import Path
 
-from github import Auth, Github
 
-
-PROMPT_LABEL = os.getenv("PROMPT_LABEL", "claude-pr-checklist-prompt")
+PROMPT_FILE = os.getenv(
+    "CHECKLIST_PROMPT_FILE", ".github/claude-checklist-prompt.md"
+)
 OUTPUT_PATH = os.getenv(
     "CHECKLIST_OUTPUT_PATH", ".tmp/pr-human-checklist.md"
 )
@@ -28,50 +29,19 @@ def set_output(name: str, value: str) -> None:
 
 
 def main() -> None:
-    github_token = os.getenv("GITHUB_TOKEN")
-    pr_number = os.getenv("PR_NUMBER")
-    repository = os.getenv("REPOSITORY")
-
-    if not all([github_token, pr_number, repository]):
-        print("Missing required env vars", file=sys.stderr)
-        sys.exit(1)
-
-    gh = Github(auth=Auth.Token(github_token))
-    repo = gh.get_repo(repository)
-    pr = repo.get_pull(int(pr_number))
-    pr_author = pr.user.login
-
-    matched_issues = []
-    for issue in repo.get_issues(state="open", labels=[PROMPT_LABEL]):
-        if issue.pull_request is not None:
-            continue
-        label_names = {label.name for label in issue.labels}
-        if PROMPT_LABEL not in label_names:
-            continue
-        assignees = {assignee.login for assignee in issue.assignees}
-        if pr_author not in assignees:
-            continue
-        matched_issues.append(issue)
-
-    if not matched_issues:
+    prompt_path = Path(PROMPT_FILE)
+    if not prompt_path.exists():
         set_output("enabled", "false")
         set_output("prompt", "")
-        print(
-            f"No prompt issues matched label={PROMPT_LABEL} for author={pr_author}"
-        )
+        print(f"Prompt file not found: {PROMPT_FILE}")
         return
 
-    matched_issues.sort(key=lambda issue: issue.number)
-    prompt_sections = []
-    for issue in matched_issues:
-        prompt_sections.append(
-            "\n".join(
-                [
-                    f"## Prompt Source: #{issue.number} {issue.title}",
-                    issue.body or "",
-                ]
-            )
-        )
+    user_prompt = prompt_path.read_text(encoding="utf-8").strip()
+    if not user_prompt:
+        set_output("enabled", "false")
+        set_output("prompt", "")
+        print("Prompt file is empty")
+        return
 
     prompt = "\n".join(
         [
@@ -99,15 +69,13 @@ def main() -> None:
             "",
             "リポジトリは既に checkout 済みです。必要なら git diff やファイル読取で差分を確認してください。",
             "",
-            *prompt_sections,
+            user_prompt,
         ]
     )
 
     set_output("enabled", "true")
     set_output("prompt", prompt)
-    print(
-        f"Prepared checklist prompt from {len(matched_issues)} issue(s) for {pr_author}"
-    )
+    print(f"Prepared checklist prompt from {PROMPT_FILE}")
 
 
 if __name__ == "__main__":

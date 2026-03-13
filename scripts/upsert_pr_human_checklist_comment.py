@@ -1,5 +1,12 @@
 """
-Create or update a sticky PR comment for the generated human checklist.
+Create, update, or delete the sticky PR comment for the generated human checklist.
+
+Behaviour is controlled by the CHECKLIST_ENABLED env var (set by prepare step):
+  "true"  → upsert the comment using the file at CHECKLIST_OUTPUT_PATH.
+            Exits 1 (error) if the file is missing or empty so the workflow
+            step fails visibly instead of silently skipping.
+  "false" → delete any existing checklist comment and exit 0.
+            Keeps the PR clean after the triggering issue is closed/unassigned.
 """
 
 from __future__ import annotations
@@ -14,29 +21,36 @@ COMMENT_MARKER = "<!-- claude-pr-human-checklist -->"
 COMMENT_PATH = os.getenv("CHECKLIST_OUTPUT_PATH", ".tmp/pr-human-checklist.md")
 
 
-def warn(message: str) -> None:
-    print(f"::warning::{message}")
+def _get_existing(pr):
+    return next(
+        (c for c in pr.get_issue_comments() if COMMENT_MARKER in c.body),
+        None,
+    )
 
 
-def main() -> None:
-    github_token = os.getenv("GITHUB_TOKEN")
-    pr_number = os.getenv("PR_NUMBER")
-    repository = os.getenv("REPOSITORY")
+def delete_stale(pr) -> None:
+    existing = _get_existing(pr)
+    if existing:
+        existing.delete()
+        print("Stale checklist comment deleted.")
+    else:
+        print("No existing checklist comment found; nothing to delete.")
 
-    if not all([github_token, pr_number, repository]):
-        print("Missing required env vars", file=sys.stderr)
-        sys.exit(1)
 
+def upsert(pr) -> None:
     if not os.path.exists(COMMENT_PATH):
-        warn(f"Checklist file not found, skipping comment update: {COMMENT_PATH}")
-        sys.exit(0)
+        print(
+            f"::error::Checklist file not found: {COMMENT_PATH}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
     with open(COMMENT_PATH, encoding="utf-8") as fh:
         checklist_body = fh.read().strip()
 
     if not checklist_body:
-        warn("Checklist body is empty, skipping comment update")
-        sys.exit(0)
+        print("::error::Checklist file is empty.", file=sys.stderr)
+        sys.exit(1)
 
     final_body = "\n".join(
         [
@@ -53,21 +67,33 @@ def main() -> None:
     if len(final_body) > 65536:
         final_body = final_body[:65500] + "\n\n... (truncated)"
 
-    gh = Github(auth=Auth.Token(github_token))
-    repo = gh.get_repo(repository)
-    pr = repo.get_pull(int(pr_number))
-
-    existing = next(
-        (comment for comment in pr.get_issue_comments() if COMMENT_MARKER in comment.body),
-        None,
-    )
-
+    existing = _get_existing(pr)
     if existing:
         existing.edit(final_body)
         print("Checklist comment updated.")
     else:
         pr.create_issue_comment(final_body)
         print("Checklist comment posted.")
+
+
+def main() -> None:
+    github_token = os.getenv("GITHUB_TOKEN")
+    pr_number = os.getenv("PR_NUMBER")
+    repository = os.getenv("REPOSITORY")
+    enabled = os.getenv("CHECKLIST_ENABLED", "true")
+
+    if not all([github_token, pr_number, repository]):
+        print("Missing required env vars", file=sys.stderr)
+        sys.exit(1)
+
+    gh = Github(auth=Auth.Token(github_token))
+    repo = gh.get_repo(repository)
+    pr = repo.get_pull(int(pr_number))
+
+    if enabled == "true":
+        upsert(pr)
+    else:
+        delete_stale(pr)
 
 
 if __name__ == "__main__":
