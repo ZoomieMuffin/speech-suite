@@ -8,7 +8,7 @@ import Foundation
 /// 設定 UI 追加時に KVO / NotificationCenter ベースの live-update 対応を行う予定。
 @MainActor
 public final class SettingsStore {
-    private static let userDefaultsKey = "com.speech-suite.AppSettings"
+    static let userDefaultsKey = "com.speech-suite.AppSettings"
 
     public private(set) var settings: AppSettings
 
