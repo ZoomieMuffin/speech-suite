@@ -1,6 +1,6 @@
 import Foundation
 
-/// AppSettings を UserDefaults に JSON で永続化するストア。
+/// `AppSettings` を UserDefaults に JSON で永続化するストア。
 ///
 /// **設計上の制約（既知）**: 設定はインスタンス生成時に一度だけ読み込むスナップショット方式。
 /// 実行中の UserDefaults 変更は `update(_:)` 経由でのみ反映され、
