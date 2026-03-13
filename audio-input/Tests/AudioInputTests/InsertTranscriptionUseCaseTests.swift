@@ -348,10 +348,15 @@ private actor HandshakeRecorder: AudioRecorderProtocol {
 
 @Test @MainActor func insertUseCaseEarlyStopDuringStartRecording() async throws {
     // start() が recorder.startRecording() を await している最中に stop() を受け取る経路を検証。
-    // HandshakeRecorder の同期ポイントで startRecording() 突入を確認してから stop() を発行する。
-    // Task.sleep に依存しないため CI 負荷に関わらず安定して動作する。
+    // HandshakeRecorder で startRecording() 突入後に stop() を発行する同期設計。
+    //
+    // 自己検証: segments を非空にすることで通常経路（transcriptionService.start() が呼ばれ
+    // セグメントが処理される）を踏むと inserter.insert() が呼ばれてテストが落ちる。
+    // early-stop 経路では transcriptionService.start() が一切呼ばれないため
+    // inserter.insertedTexts は必ず空になる。これにより false positive を排除する。
+    let segment = try TranscriptionSegment(text: "テスト", startTime: 0, endTime: 1)
     let recorder = HandshakeRecorder()
-    let transcription = StubTranscriptionService(segments: [])
+    let transcription = StubTranscriptionService(segments: [segment])
     let inserter = CapturingInserter()
 
     let useCase = InsertTranscriptionUseCase(
@@ -362,22 +367,16 @@ private actor HandshakeRecorder: AudioRecorderProtocol {
     )
 
     let startTask = Task { try await useCase.start() }
-    // startRecording() に入るまで待機 → use case actor はこの時点で空き状態。
     await recorder.awaitEntry()
-
-    // 設計: stop() を先にキューに積み、recorder.proceed() を後から発行する。
-    //
-    // 1. Task { await recorder.proceed() } を作成 → MainActor にスケジュール済みだが未実行。
-    // 2. try await useCase.stop() → stop() を use case actor の FIFO キューに積み、
-    //    テストタスクが suspend → MainActor が解放される。
-    // 3. MainActor が空いた時点で (1) の Task が動き recorder.proceed() を発行。
-    //    これにより startRecording() が完了し start() の継続が use case actor にキューイング。
-    // 4. use case actor は FIFO のため stop()（ステップ 2）を start() 継続（ステップ 3）より
-    //    先に処理し stopRequested = true を設定してから start() を再開する。
+    // stop() を use case actor にキューイングしてからテストタスクを suspend。
+    // MainActor 解放後に proceed タスクが動き startRecording() を完了させる。
+    // use case actor の FIFO により stop() は start() 継続より先に処理される。
     Task { await recorder.proceed() }
     try await useCase.stop()
     try await startTask.value
 
+    // early-stop 経路では transcriptionService.start() が呼ばれないため空。
+    // 通常経路では "テスト" が挿入されてここで失敗する（false positive 検出）。
     #expect(inserter.insertedTexts.isEmpty)
 }
 
