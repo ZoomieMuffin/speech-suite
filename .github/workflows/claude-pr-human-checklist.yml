@@ -54,7 +54,7 @@ jobs:
           prompt: ${{ steps.prepare.outputs.prompt }}
           show_full_output: 'true'
           claude_args: |
-            --max-turns 4
+            --max-turns 10
             --permission-mode bypassPermissions
 
       - name: Update checklist comment
