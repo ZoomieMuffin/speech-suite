@@ -55,6 +55,7 @@ jobs:
           show_full_output: 'true'
           claude_args: |
             --max-turns 4
+            --permission-mode bypassPermissions
 
       - name: Update checklist comment
         if: ${{ steps.prepare.conclusion == 'success' }}
