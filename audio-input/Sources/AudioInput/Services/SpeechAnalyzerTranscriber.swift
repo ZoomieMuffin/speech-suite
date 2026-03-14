@@ -65,6 +65,7 @@ public actor SpeechAnalyzerTranscriber: TranscriptionService {
     public func stop() async throws(SpeechCoreError) {
         inputContinuation?.finish()
         inputContinuation = nil
+        analyzerTask?.cancel()
         await analyzerTask?.value
         analyzerTask = nil
         isRunning = false
@@ -90,11 +91,15 @@ public actor SpeechAnalyzerTranscriber: TranscriptionService {
         outputContinuation: AsyncThrowingStream<TranscriptionSegment, any Error>.Continuation
     ) async {
         do {
+            try Task.checkCancellation()
+
             let transcriber = SpeechTranscriber(locale: locale, preset: .transcription)
             let analyzer = SpeechAnalyzer(modules: [transcriber])
 
             let audioFormat = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber])
             try await analyzer.prepareToAnalyze(in: audioFormat)
+
+            try Task.checkCancellation()
 
             let engine = AVAudioEngine()
             let inputNode = engine.inputNode

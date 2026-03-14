@@ -30,11 +30,20 @@ struct AudioInputApp: App {
             MenuBarContentView(
                 appState: appState,
                 settingsStore: settingsStore,
-                notificationService: notificationService,
                 registry: registry
             )
         } label: {
             MenuBarIconView(status: appState.status)
+                .task { await bootstrapServices() }
+        }
+    }
+
+    /// アプリ起動時に通知権限取得とサービス登録を行う。
+    /// MenuBarExtra のラベルは常時表示されるため、メニュー開閉に依存しない。
+    private func bootstrapServices() async {
+        await notificationService.requestAuthorization()
+        if #available(macOS 26, *) {
+            await registry.register(SpeechAnalyzerTranscriber(locale: .current))
         }
     }
 }
@@ -68,7 +77,6 @@ private struct MenuBarIconView: View {
 private struct MenuBarContentView: View {
     let appState: AppState
     let settingsStore: SettingsStore
-    let notificationService: NotificationService
     let registry: TranscriberRegistry
 
     @State private var availableServices: [any TranscriptionService] = []
@@ -77,12 +85,6 @@ private struct MenuBarContentView: View {
         Text(statusLabel)
             .foregroundStyle(.secondary)
             .task {
-                await notificationService.requestAuthorization()
-                // macOS 26+ で SpeechAnalyzerTranscriber をレジストリに登録する。
-                // 低バージョンでは if #available ガードにより実行されない。
-                if #available(macOS 26, *) {
-                    await registry.register(SpeechAnalyzerTranscriber(locale: .current))
-                }
                 availableServices = await registry.availableServices()
             }
 
