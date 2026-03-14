@@ -11,13 +11,15 @@ struct AudioInputApp: App {
     @State private var registry = TranscriberRegistry()
     // TODO: AudioRecorderProtocol の具体実装が揃ったタイミングで AppController を初期化する。
     //       初期化例:
+    //         let selectedId = settingsStore.settings.selectedTranscriptionServiceId
+    //         guard let service = await registry.resolveService(preferredId: selectedId) else { return }
     //         controller = try? AppController(
     //             settingsStore: settingsStore,
     //             notificationService: notificationService,
     //             appState: appState,
     //             overlayController: overlayController,
     //             recorder: <AudioRecorderProtocol実装>,
-    //             transcriptionService: <registry から取得した TranscriptionService>,
+    //             transcriptionService: service,
     //             inserter: <TextInserterProtocol実装>
     //         )
     //       AppController が nil の間、アイコンは .idle 固定でオーバーレイは表示されない。

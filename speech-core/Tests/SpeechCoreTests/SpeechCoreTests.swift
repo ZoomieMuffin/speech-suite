@@ -483,6 +483,45 @@ private actor MockService: TranscriptionService {
     #expect(available == true)
 }
 
+@Test func availableServicesPreservesRegistrationOrder() async {
+    let registry = TranscriberRegistry()
+    await registry.register(MockService(id: "c"))
+    await registry.register(MockService(id: "a"))
+    await registry.register(MockService(id: "b"))
+    let ids = await registry.availableServices().map(\.id)
+    #expect(ids == ["c", "a", "b"])
+}
+
+@Test func resolveServiceReturnsPreferred() async {
+    let registry = TranscriberRegistry()
+    await registry.register(MockService(id: "first"))
+    await registry.register(MockService(id: "second"))
+    let resolved = await registry.resolveService(preferredId: "second")
+    #expect(resolved?.id == "second")
+}
+
+@Test func resolveServiceFallsBackWhenPreferredUnavailable() async {
+    let registry = TranscriberRegistry()
+    await registry.register(MockService(id: "fallback"))
+    await registry.register(MockService(id: "preferred", isAvailable: false))
+    let resolved = await registry.resolveService(preferredId: "preferred")
+    #expect(resolved?.id == "fallback")
+}
+
+@Test func resolveServiceFallsBackWhenNil() async {
+    let registry = TranscriberRegistry()
+    await registry.register(MockService(id: "first"))
+    await registry.register(MockService(id: "second"))
+    let resolved = await registry.resolveService(preferredId: nil)
+    #expect(resolved?.id == "first")
+}
+
+@Test func resolveServiceReturnsNilForEmptyRegistry() async {
+    let registry = TranscriberRegistry()
+    let resolved = await registry.resolveService(preferredId: "any")
+    #expect(resolved == nil)
+}
+
 // MARK: - MockFileTranscriber
 
 @Test func mockFileTranscriberYieldsSegments() async throws {

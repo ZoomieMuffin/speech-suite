@@ -1,11 +1,16 @@
 /// サービスを ID で登録・取得・フィルタリングするレジストリ。
+/// 登録順を保持し、availableServices() は登録順で返す。
 public actor TranscriberRegistry {
+    private var orderedIds: [String] = []
     private var services: [String: any TranscriptionService] = [:]
 
     public init() {}
 
-    /// サービスを登録する。同一 ID は上書きされる。
+    /// サービスを登録する。同一 ID は上書き（登録順は維持）。
     public func register(_ service: any TranscriptionService) {
+        if services[service.id] == nil {
+            orderedIds.append(service.id)
+        }
         services[service.id] = service
     }
 
@@ -14,15 +19,25 @@ public actor TranscriberRegistry {
         services[id]
     }
 
-    /// 現在 isAvailable == true のサービス一覧を返す。
-    /// await 中の actor 再入による Dictionary 変更を防ぐためスナップショットで反復する。
+    /// 現在 isAvailable == true のサービス一覧を登録順で返す。
     public func availableServices() async -> [any TranscriptionService] {
-        let snapshot = Array(services.values)
         var result: [any TranscriptionService] = []
-        result.reserveCapacity(snapshot.count)
-        for svc in snapshot {
-            if await svc.isAvailable { result.append(svc) }
+        result.reserveCapacity(orderedIds.count)
+        for id in orderedIds {
+            if let svc = services[id], await svc.isAvailable {
+                result.append(svc)
+            }
         }
         return result
+    }
+
+    /// 設定の selectedTranscriptionServiceId に基づいてサービスを解決する。
+    /// - preferredId が指定されており、そのサービスが利用可能ならそれを返す。
+    /// - それ以外は登録順で最初の利用可能サービスにフォールバックする。
+    public func resolveService(preferredId: String?) async -> (any TranscriptionService)? {
+        if let preferredId, let svc = services[preferredId], await svc.isAvailable {
+            return svc
+        }
+        return await availableServices().first
     }
 }

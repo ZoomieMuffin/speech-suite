@@ -119,4 +119,73 @@ struct TranscriberRegistryProviderTests {
         let decoded = try JSONDecoder().decode(AppSettings.self, from: strippedData)
         #expect(decoded.selectedTranscriptionServiceId == nil)
     }
+
+    // MARK: - Registration order & resolveService
+
+    @Test("availableServices preserves registration order")
+    func availableServicesPreservesOrder() async {
+        let registry = TranscriberRegistry()
+        let a = MockTranscriptionService(id: "alpha")
+        let b = MockTranscriptionService(id: "bravo")
+        let c = MockTranscriptionService(id: "charlie")
+        await registry.register(a)
+        await registry.register(b)
+        await registry.register(c)
+
+        let ids = await registry.availableServices().map(\.id)
+        #expect(ids == ["alpha", "bravo", "charlie"])
+    }
+
+    @Test("resolveService returns preferred service when available")
+    func resolveServicePreferred() async {
+        let registry = TranscriberRegistry()
+        let a = MockTranscriptionService(id: "first")
+        let b = MockTranscriptionService(id: "second")
+        await registry.register(a)
+        await registry.register(b)
+
+        let resolved = await registry.resolveService(preferredId: "second")
+        #expect(resolved?.id == "second")
+    }
+
+    @Test("resolveService falls back to first available when preferred is unavailable")
+    func resolveServiceFallbackWhenUnavailable() async {
+        let registry = TranscriberRegistry()
+        let a = MockTranscriptionService(id: "first")
+        let b = MockTranscriptionService(id: "second", isAvailable: false)
+        await registry.register(a)
+        await registry.register(b)
+
+        let resolved = await registry.resolveService(preferredId: "second")
+        #expect(resolved?.id == "first")
+    }
+
+    @Test("resolveService falls back to first available when preferredId is nil")
+    func resolveServiceFallbackWhenNil() async {
+        let registry = TranscriberRegistry()
+        let a = MockTranscriptionService(id: "alpha")
+        let b = MockTranscriptionService(id: "bravo")
+        await registry.register(a)
+        await registry.register(b)
+
+        let resolved = await registry.resolveService(preferredId: nil)
+        #expect(resolved?.id == "alpha")
+    }
+
+    @Test("resolveService returns nil for empty registry")
+    func resolveServiceEmptyRegistry() async {
+        let registry = TranscriberRegistry()
+        let resolved = await registry.resolveService(preferredId: "any")
+        #expect(resolved == nil)
+    }
+
+    @Test("resolveService falls back when preferred ID is not registered")
+    func resolveServiceUnregisteredId() async {
+        let registry = TranscriberRegistry()
+        let a = MockTranscriptionService(id: "registered")
+        await registry.register(a)
+
+        let resolved = await registry.resolveService(preferredId: "unknown")
+        #expect(resolved?.id == "registered")
+    }
 }

@@ -20,7 +20,8 @@ public struct AppSettings: Codable, Sendable, Equatable {
     /// Push-to-Talk 中のオーバーレイ表示の有効/無効（既定: ON）
     public var overlayEnabled: Bool = true
 
-    /// 選択中の文字起こしサービス ID。nil の場合はレジストリ先頭の利用可能サービスを使う。
+    /// 選択中の文字起こしサービス ID。nil の場合は登録順で最初の利用可能サービスにフォールバック。
+    /// TranscriberRegistry.resolveService(preferredId:) で解決する。
     /// macOS 26 以降では "com.speech-suite.speech-analyzer" が登録される。
     public var selectedTranscriptionServiceId: String? = nil
 
