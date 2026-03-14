@@ -1,7 +1,7 @@
 import Foundation
 import Observation
 
-/// AppSettings を UserDefaults に JSON で永続化する Observable ストア。
+/// `AppSettings` を UserDefaults に JSON で永続化する Observable ストア。
 ///
 /// `@Observable` により `settings` の変更が SwiftUI の再描画を自動駆動する。
 /// 実行中の UserDefaults 変更は `update(_:)` 経由でのみ反映され、
