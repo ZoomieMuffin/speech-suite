@@ -2,7 +2,7 @@ import Foundation
 import OSLog
 import UserNotifications
 
-/// エラー発生時にシステム通知を表示するサービス。
+/// エラー・成功通知をシステム通知で表示するサービス。
 @MainActor
 public final class NotificationService {
     private var isAuthorized = false
@@ -54,6 +54,29 @@ public final class NotificationService {
         }
         authorizationTask = task
         await task.value
+    }
+
+    /// 保存成功をシステム通知で表示する。
+    /// - Parameter message: 通知の本文（例: "Voice Note を保存しました"）
+    public func notifySuccess(_ message: String) {
+        guard isAuthorized else {
+            logger.info("Cannot deliver success notification (not authorized) — message: \(message, privacy: .public)")
+            return
+        }
+        let content = UNMutableNotificationContent()
+        content.title = "Speech Suite"
+        content.body = message
+        content.sound = nil  // 成功時はサウンドなし（控えめ）
+        let request = UNNotificationRequest(
+            identifier: UUID().uuidString,
+            content: content,
+            trigger: nil
+        )
+        UNUserNotificationCenter.current().add(request) { [logger] deliveryError in
+            if let deliveryError {
+                logger.error("Failed to schedule success notification: \(deliveryError.localizedDescription, privacy: .public)")
+            }
+        }
     }
 
     /// エラーをシステム通知で表示する。
