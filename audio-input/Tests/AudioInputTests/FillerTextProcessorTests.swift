@@ -46,6 +46,12 @@ import Testing
     #expect(result == "今日は天気がいい")
 }
 
+@Test func removesFillerWithInnerJapanesePunctuation() async throws {
+    let processor = FillerTextProcessor()
+    let result = try await processor.process("今日は、えーと、会議があります")
+    #expect(result == "今日は、会議があります")
+}
+
 // MARK: - ユーザー定義パターン
 
 @Test func removesCustomFillerPattern() async throws {

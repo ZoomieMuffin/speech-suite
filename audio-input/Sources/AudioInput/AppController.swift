@@ -204,8 +204,10 @@ public final class AppController {
             guard activeMode == .dvn else { return }
             updateStatus(.transcribing(.dvn))
             do {
-                try await dvnUseCase.stop()
-                notificationService.notifySuccess("Voice Note を保存しました")
+                let didSave = try await dvnUseCase.stop()
+                if didSave {
+                    notificationService.notifySuccess("Voice Note を保存しました")
+                }
             } catch {
                 notificationService.notifyError(error, context: "Voice Note 保存エラー")
             }
