@@ -100,8 +100,11 @@ public actor AppendDailyVoiceNoteUseCase {
 
     /// 録音を停止し、蓄積したセグメントを結合してファイルに追記する。
     /// 保存に失敗した場合はエラーを throw する。
-    public func stop() async throws {
-        guard state == .active else { return }
+    /// - Returns: テキストが実際にファイルに書き込まれた場合は `true`。
+    ///   セグメントが空、またはフィラー除去後にテキストが空になった場合は `false`。
+    @discardableResult
+    public func stop() async throws -> Bool {
+        guard state == .active else { return false }
         guard let task = streamTask else {
             // start() が await 中（streamTask がまだ nil）。
             // フラグを立てて start() のクリーンアップ完了まで待機する。
@@ -111,7 +114,7 @@ public actor AppendDailyVoiceNoteUseCase {
             await withCheckedContinuation { continuation in
                 stopWhileStartingContinuation = continuation
             }
-            return
+            return false
         }
         state = .stopping
         streamTask = nil
@@ -137,14 +140,15 @@ public actor AppendDailyVoiceNoteUseCase {
         }
 
         if let error = firstError { throw error }
-        guard !segments.isEmpty else { return }
+        guard !segments.isEmpty else { return false }
         var text = segments.map(\.text).joined(separator: " ")
         if let processor = textProcessor {
             text = try await processor.process(text)
         }
-        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
         let timestamp = timeFormatter.string(from: date)
         try await sink.write("- [\(timestamp)] \(text)\n", date: date)
+        return true
     }
 
     // MARK: - Private helpers

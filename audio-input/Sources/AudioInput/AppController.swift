@@ -59,9 +59,13 @@ public final class AppController {
         )
 
         let sink = FileDailyNoteSink(notesDir: settings.notesDirURL)
+        let textProcessor: (any TextProcessorProtocol)? = settings.fillerFilterEnabled
+            ? FillerTextProcessor(customPatterns: settings.fillerPatterns)
+            : nil
         self.dvnUseCase = AppendDailyVoiceNoteUseCase(
             recorder: recorder,
             transcriptionService: transcriptionService,
+            textProcessor: textProcessor,
             sink: sink,
             hallucinationFilter: fillerFilter
         )
@@ -199,7 +203,12 @@ public final class AppController {
         case .released:
             guard activeMode == .dvn else { return }
             updateStatus(.transcribing(.dvn))
-            do { try await dvnUseCase.stop() } catch {
+            do {
+                let didSave = try await dvnUseCase.stop()
+                if didSave {
+                    notificationService.notifySuccess("Voice Note を保存しました")
+                }
+            } catch {
                 notificationService.notifyError(error, context: "Voice Note 保存エラー")
             }
             activeMode = nil

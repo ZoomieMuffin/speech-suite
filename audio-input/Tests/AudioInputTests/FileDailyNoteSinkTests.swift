@@ -56,7 +56,7 @@ import Testing
     comps.day = 11
     let date = Calendar.current.date(from: comps)!
     let url = try sink.fileURL(for: date)
-    #expect(url.lastPathComponent == "2026-03-11.md")
+    #expect(url.lastPathComponent == "2026-03-11-voice.md")
 }
 
 @Test func fileDailyNoteSinkUsesProvidedDateForFilePath() async throws {
@@ -71,7 +71,7 @@ import Testing
     let sink = FileDailyNoteSink(notesDir: dir)
     try await sink.write("- [23:59] 大晦日\n", date: newYearsEve)
 
-    let expectedFile = dir.appendingPathComponent("2026-12-31.md")
+    let expectedFile = dir.appendingPathComponent("2026-12-31-voice.md")
     #expect(FileManager.default.fileExists(atPath: expectedFile.path))
 }
 

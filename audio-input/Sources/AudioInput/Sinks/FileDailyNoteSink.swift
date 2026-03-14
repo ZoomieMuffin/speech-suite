@@ -43,7 +43,7 @@ public struct FileDailyNoteSink: OutputSinkProtocol {
         }
     }
 
-    /// 日付から保存先ファイル URL を生成する。形式: YYYY-MM-DD.md
+    /// 日付から保存先ファイル URL を生成する。形式: YYYY-MM-DD-voice.md
     /// DateFormatter は Sendable な struct に static で持つと並行呼び出し時に thread-safe でない。
     /// Calendar.dateComponents で直接年月日を取得して文字列化することで Formatter を排除する。
     /// Gregorian 固定により非グレゴリオ暦環境でも仕様どおりのファイル名を保証する。
@@ -54,7 +54,7 @@ public struct FileDailyNoteSink: OutputSinkProtocol {
         guard let year = c.year, let month = c.month, let day = c.day else {
             throw FileDailyNoteSinkError.dateComponentsFailed(date)
         }
-        let filename = String(format: "%04d-%02d-%02d.md", year, month, day)
+        let filename = String(format: "%04d-%02d-%02d-voice.md", year, month, day)
         return notesDir.appendingPathComponent(filename)
     }
 }
